@@ -1,0 +1,119 @@
+name: NuitkaBuild
+
+on:
+  push:
+    tags:
+      - 'v*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code with current tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      # Install Build Tools - IMPORTANT
+      - name: Install Visual Studio Build Tools
+        uses: microsoft/setup-msbuild@v1.1
+        
+      
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          pip install --upgrade pip
+          pip install nuitka
+          pip install PyQt5
+      
+      # - name: Install 7z
+      #   uses: milliewalky/setup-7-zip@v2
+        # with:
+        #   # Add 7z to the PATH
+        #   path: true
+
+
+
+      # - name: Get Python executable path
+      #   run: |
+      #     python -c "from PyQt5.QtCore import QLibraryInfo; print(QLibraryInfo.location(QLibraryInfo.PluginsPath))"
+    
+      - name: Compile with Nuitka
+        shell: pwsh
+        run:
+          python -m nuitka --assume-yes-for-downloads 
+          --standalone --show-progress --show-memory --remove-output --follow-imports --lto=yes --windows-disable-console 
+          --include-data-files="C:/hostedtoolcache/windows/Python/3.9.13/x64/lib/site-packages/PyQt5/Qt5/plugins/platforms/qwindows.dll=platforms/qwindows.dll" 
+          --include-data-files="C:/hostedtoolcache/windows/Python/3.9.13/x64/lib/site-packages/PyQt5/Qt5/plugins/styles/qwindowsvistastyle.dll=styles/qwindowsvistastyle.dll" 
+          --output-dir="${{ github.workspace }}/dist" 
+          main.py
+      # --windows-icon-from-ico=${{ github.workspace }}/icon.ico
+
+      # Uploads artifact
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CANoeFDXClient
+          path: dist
+          include-hidden-files: true
+
+      # 获去最新的tag号
+      - name: Get tag name
+        id: get_tag
+        run: |
+          $current_tag = git describe --tags --abbrev=0 HEAD
+          echo "tag=${current_tag}" >> $env:GITHUB_ENV
+      
+      # - name: List files
+      #   run: |
+      #     ls
+
+      - name: rename build file
+        run: |
+          Rename-Item -Path "dist" -NewName "CANoeFDXClient_${{ env.tag }}"
+
+      # - name: List files
+      #   run: |
+      #     ls
+
+      
+      
+      - name: Zip the dist folder
+        run: |
+          7z a -t7z CANoeFDXClient-${{ env.tag }}.7z CANoeFDXClient_${{ env.tag }}  # 压缩 CANoeFDXClient_${{ env.tag }} 文件夹为 CANoeFDXClient-${{ env.tag }}.7z
+
+      # - name: List files
+      #   run: |
+      #     ls
+
+      # 创建github release号
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.tag }}
+          release_name: Release ${{ env.tag }}
+          draft: false
+          prerelease: false
+
+      # 上传编译文件
+      - name: Upload Artifact to GitHub Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ github.workspace }}/CANoeFDXClient-${{ env.tag }}.7z #runner 本地文件路径
+          asset_name: CANoeFDXClient-${{ env.tag }}.7z  # 使用标签作为文件名的一部分
+          asset_content_type: application/7z
