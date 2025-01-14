@@ -171,23 +171,23 @@ class VectorFDX(object):
         """处理数据请求命令"""
         pass
 
-    def handle_data_error(self):
+    def handle_data_error(self, command_data, addr):
         """处理数据异常"""
         pass
 
-    def handle_free_running_request(self):
+    def handle_free_running_request(self, command_data, addr):
         """处理自由运行请求"""
         pass
 
-    def handle_free_running_cancel(self):
+    def handle_free_running_cancel(self, command_data, addr):
         """处理取消自由运行"""
         pass
 
-    def handle_sequence_number_error(self):
+    def handle_sequence_number_error(self, command_data, addr):
         """处理序列错误"""
         pass
 
-    def handle_function_call_error(self):
+    def handle_function_call_error(self, command_data, addr):
         """处理function触发异常"""
         pass
 
