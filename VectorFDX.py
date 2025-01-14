@@ -1,7 +1,6 @@
 import socket
+import struct
 import threading
-import time
-from typing import Literal
 
 
 class VectorFDX(object):
@@ -16,7 +15,7 @@ class VectorFDX(object):
     COMMAND_CODE_FREE_RUNNING_REQUEST = 0x0008
     COMMAND_CODE_FREE_RUNNING_CANCEL = 0x0009
     COMMAND_CODE_STATUS_REQUEST = 0x000A
-    COMMAND_CODE_STATUS_REQUEST_2 = 0x000B
+    COMMAND_CODE_SEQUENCE_NUMBER_ERROR = 0x000B
     COMMAND_CODE_INCREMENT_TIME = 0x0011
     COMMAND_CODE_FUNCTION_CALL = 0x000C
     COMMAND_CODE_FUNCTION_CALL_ERROR = 0x000D
@@ -29,7 +28,7 @@ class VectorFDX(object):
         self.fdx_major_version = fdx_major_version.to_bytes(1, 'little')
         self.fdx_minor_version = fdx_minor_version.to_bytes(1, 'little')
         self.number_of_commands = 0  # 初始化为0，在添加命令时累加
-        self.sequence_number = 1  # 使用更清晰的名称
+        self.sequence_number = 1
         self.fdx_protocol_flags = 1  # Byte Order, Little Endian (0) or Big Endian (1)
         if self.fdx_protocol_flags == 1:
             self.fdx_byte_order = 'big' # According to fdx_protocol_flags
@@ -45,7 +44,24 @@ class VectorFDX(object):
         self.target_port = target_port
         self.receive_thread = None
         self.is_running = False
-        self.received_data = []  # 存储接收到的数据
+
+        # self.received_data = []  # 存储接收到的数据
+        self.command_handlers = {
+            self.COMMAND_CODE_START: self.handle_start_command,
+            self.COMMAND_CODE_STOP: self.handle_stop_command,
+            self.COMMAND_CODE_KEY: self.handle_key_command,
+            # self.COMMAND_CODE_STATUS: self.handle_status_command,
+            self.COMMAND_CODE_DATA_EXCHANGE: self.handle_data_exchange_command,
+            self.COMMAND_CODE_DATA_REQUEST: self.handle_data_request_command,
+            self.COMMAND_CODE_DATA_ERROR: self.handle_data_error,
+            self.COMMAND_CODE_FREE_RUNNING_REQUEST: self.handle_free_running_request,
+            self.COMMAND_CODE_FREE_RUNNING_CANCEL: self.handle_free_running_cancel,
+            # self.COMMAND_CODE_STATUS_REQUEST: self.handle_status_request,
+            self.COMMAND_CODE_SEQUENCE_NUMBER_ERROR: self.handle_sequence_number_error,
+            # self.COMMAND_CODE_INCREMENT_TIME: self.handle_increment_time,
+            # self.COMMAND_CODE_FUNCTION_CALL: self.handle_function_call,
+            self.COMMAND_CODE_FUNCTION_CALL_ERROR: self.handle_function_call_error,
+        }
 
     def create_udp_socket(self):
         """创建 UDP 套接字并绑定到本地地址，设置为非阻塞模式"""
@@ -74,13 +90,102 @@ class VectorFDX(object):
         while self.is_running:
             try:
                 data, addr = self.udp_socket.recvfrom(65535)
-                self.received_data.append((data, addr))
+                if not data.startswith(self.fdx_signature):
+                    print("Invalid FDX signature.")
+                else:
+                    self.parse_fdx_data(data, addr)
                 # print(f"Received data from {addr}: {data.hex()}")
             except Exception as e:
                 if self.is_running:  # 仅当 is_running 为 True 时才打印错误
                     print(f"Error receiving data: {e}")
                     # 如果套接字被关闭，recvfrom 会抛出异常，正常退出循环
                 break
+    def parse_fdx_data(self, data, addr):
+        """解析 FDX 数据"""
+        try:
+            # 检查数据长度是否足够
+            header_len = 16
+            if len(data) < header_len + 4:
+                print(f"Data too short: {len(data)} bytes")
+                return
+            fdx_signature, major_version, minor_version, number_of_commands, sequence_number, protocol_flags, reserved = struct.unpack(f'<8sBBHHBB', data[:header_len])
+            if fdx_signature != self.fdx_signature:
+                raise ValueError("Invalid FDX signature.")
+            if protocol_flags == 1:
+                byteorder = 'big'
+            elif protocol_flags == 0:
+                byteorder = 'little'
+            else:
+                byteorder = 'big'
+            # print(f"Received data: signature={signature.hex()}, major_version={major_version}, minor_version={minor_version}, number_of_commands={number_of_commands}, sequence_number={sequence_number}, protocol_flags={protocol_flags}, reserved={reserved}")
+
+            # 从头部之后开始解析命令
+            offset = header_len
+            for _ in range(number_of_commands):
+                # 检查剩余数据长度是否足够
+                if offset + 4 > len(data):
+                    raise ValueError(f"Data too short for command: {len(data) - offset} bytes")
+                command_size = int.from_bytes(data[offset:offset + 2], byteorder)
+                command_code = int.from_bytes(data[offset + 2:offset + 4], byteorder)
+                command_data = data[offset + 4:offset + command_size]
+
+                # print(f"command_size={command_size}, command_code={command_code}, command_data={command_data.hex()}")
+
+                # 调用命令处理函数
+                self.handle_command(command_code, command_data, addr)
+                offset += command_size
+
+        except Exception as e:
+            print(f"Error parsing FDX data: {e}")
+
+    def handle_command(self, command_code, command_data, addr):
+        """根据命令代码调用相应的处理函数"""
+        handler = self.command_handlers.get(command_code)
+        if handler:
+            handler(command_data, addr)
+        else:
+            print(f"Unknown command code: {command_code}")
+
+    def handle_start_command(self, command_data, addr):
+        """处理开始命令"""
+        pass
+
+    def handle_stop_command(self, command_data, addr):
+        """处理停止命令"""
+        pass
+
+    def handle_key_command(self, command_data, addr):
+        """处理按键命令"""
+        pass
+
+    def handle_data_exchange_command(self, command_data, addr):
+        """处理数据交换命令"""
+        pass
+
+    def handle_data_request_command(self, command_data, addr):
+        """处理数据请求命令"""
+        pass
+
+    def handle_data_error(self):
+        """处理数据异常"""
+        pass
+
+    def handle_free_running_request(self):
+        """处理自由运行请求"""
+        pass
+
+    def handle_free_running_cancel(self):
+        """处理取消自由运行"""
+        pass
+    def handle_sequence_number_error(self):
+        """处理序列错误"""
+        pass
+
+    def handle_function_call_error(self):
+        """处理function触发异常"""
+        pass
+
+
 
     def build_fdx_header(self):
         """构建 FDX 头部"""
@@ -209,11 +314,6 @@ class VectorFDX(object):
             self.udp_socket.close()
             print("UDP socket closed.")
 
-    def get_received_data(self):
-        """获取并清空接收到的数据"""
-        data = self.received_data
-        self.received_data = []
-        return data
 
 
 if __name__ == '__main__':
@@ -232,3 +332,4 @@ if __name__ == '__main__':
     # received_data = fdx.get_received_data()
     # print(f"Received data: {received_data}")
     # fdx.close_socket()
+
