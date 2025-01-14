@@ -1,6 +1,7 @@
 import socket
 import struct
 import threading
+from typing import Literal
 
 
 class VectorFDX(object):
@@ -20,8 +21,10 @@ class VectorFDX(object):
     COMMAND_CODE_FUNCTION_CALL = 0x000C
     COMMAND_CODE_FUNCTION_CALL_ERROR = 0x000D
 
-
-    def __init__(self, fdx_major_version=2, fdx_minor_version=0, local_ip='127.0.0.1', local_port=2000, target_ip='127.0.0.1', target_port=2001):
+    def __init__(self, fdx_major_version: int = 2, fdx_minor_version: int = 0,
+                 fdx_byte_order: Literal["little", "big"] = 'big',
+                 local_ip='127.0.0.1', local_port: int = 2000,
+                 target_ip='127.0.0.1', target_port: int = 2001):
         self.max_len = 0xffe3
         self.fdx_data = b''  # 用于存储 FDX 数据
         self.fdx_signature = b'\x43\x41\x4E\x6F\x65\x46\x44\x58'
@@ -29,11 +32,12 @@ class VectorFDX(object):
         self.fdx_minor_version = fdx_minor_version.to_bytes(1, 'little')
         self.number_of_commands = 0  # 初始化为0，在添加命令时累加
         self.sequence_number = 1
-        self.fdx_protocol_flags = 1  # Byte Order, Little Endian (0) or Big Endian (1)
-        if self.fdx_protocol_flags == 1:
-            self.fdx_byte_order = 'big' # According to fdx_protocol_flags
+        self.fdx_byte_order = fdx_byte_order
+        if self.fdx_byte_order == 'big':
+            self.fdx_protocol_flags = 1
         else:
-            self.fdx_byte_order = 'little'
+            self.fdx_protocol_flags = 0
+
         self.reserved = int(0).to_bytes(1, 'little')
 
         self.udp_socket = None
@@ -84,7 +88,6 @@ class VectorFDX(object):
             self.receive_thread.join()
             self.receive_thread = None
 
-
     def _receive_data_thread(self):
         """接收数据的线程函数"""
         while self.is_running:
@@ -100,6 +103,7 @@ class VectorFDX(object):
                     print(f"Error receiving data: {e}")
                     # 如果套接字被关闭，recvfrom 会抛出异常，正常退出循环
                 break
+
     def parse_fdx_data(self, data, addr):
         """解析 FDX 数据"""
         try:
@@ -108,7 +112,8 @@ class VectorFDX(object):
             if len(data) < header_len + 4:
                 print(f"Data too short: {len(data)} bytes")
                 return
-            fdx_signature, major_version, minor_version, number_of_commands, sequence_number, protocol_flags, reserved = struct.unpack(f'<8sBBHHBB', data[:header_len])
+            fdx_signature, major_version, minor_version, number_of_commands, sequence_number, protocol_flags, reserved = struct.unpack(
+                f'<8sBBHHBB', data[:header_len])
             if fdx_signature != self.fdx_signature:
                 raise ValueError("Invalid FDX signature.")
             if protocol_flags == 1:
@@ -117,8 +122,6 @@ class VectorFDX(object):
                 byteorder = 'little'
             else:
                 byteorder = 'big'
-            # print(f"Received data: signature={signature.hex()}, major_version={major_version}, minor_version={minor_version}, number_of_commands={number_of_commands}, sequence_number={sequence_number}, protocol_flags={protocol_flags}, reserved={reserved}")
-
             # 从头部之后开始解析命令
             offset = header_len
             for _ in range(number_of_commands):
@@ -177,6 +180,7 @@ class VectorFDX(object):
     def handle_free_running_cancel(self):
         """处理取消自由运行"""
         pass
+
     def handle_sequence_number_error(self):
         """处理序列错误"""
         pass
@@ -184,8 +188,6 @@ class VectorFDX(object):
     def handle_function_call_error(self):
         """处理function触发异常"""
         pass
-
-
 
     def build_fdx_header(self):
         """构建 FDX 头部"""
@@ -195,13 +197,13 @@ class VectorFDX(object):
         else:
             self.fdx_byte_order = 'little'
         header = (
-            self.fdx_signature +
-            self.fdx_major_version +
-            self.fdx_minor_version +
-            self.number_of_commands.to_bytes(2, 'little') +
-            self.sequence_number.to_bytes(2, 'little') +
-            self.fdx_protocol_flags.to_bytes(1, 'little') +
-            self.reserved
+                self.fdx_signature +
+                self.fdx_major_version +
+                self.fdx_minor_version +
+                self.number_of_commands.to_bytes(2, 'little') +
+                self.sequence_number.to_bytes(2, 'little') +
+                self.fdx_protocol_flags.to_bytes(1, 'little') +
+                self.reserved
         )
         self.sequence_number += 1
         if self.sequence_number == 0x7FFF:
@@ -225,11 +227,11 @@ class VectorFDX(object):
         self.fdx_data[11] = number_of_commands_bytes[1]
         self.fdx_data = bytes(self.fdx_data)
 
-
     def _create_command(self, command_code: int, command_data: bytes = b""):
         """创建 FDX 命令"""
         command_size = 4 + len(command_data)
-        command = command_size.to_bytes(2, self.fdx_byte_order) + command_code.to_bytes(2, self.fdx_byte_order) + command_data
+        command = command_size.to_bytes(2, self.fdx_byte_order) + command_code.to_bytes(2,
+                                                                                        self.fdx_byte_order) + command_data
         return command
 
     def start_command(self, is_add_command: bool = False):
@@ -262,7 +264,7 @@ class VectorFDX(object):
             self.fdx_data = self.build_fdx_header() + command
         # print(f"key_command: {self.fdx_data.hex(' ').upper()}")
 
-    def datarequest_command(self, group_id: int, is_add_command: bool = False):
+    def data_request_command(self, group_id: int, is_add_command: bool = False):
         """创建并添加数据请求命令"""
         if not isinstance(group_id, int):
             raise TypeError("group_id must be an integer")
@@ -295,7 +297,7 @@ class VectorFDX(object):
         # print(f"data_exchange_command: {self.fdx_data.hex(' ').upper()}")
 
     def send_fdx_data(self):
-        """发送 FDX 数据报"""
+        """发送 FDX 数据"""
         if not self.fdx_data:
             print("No FDX data to send.")
             return
@@ -315,21 +317,9 @@ class VectorFDX(object):
             print("UDP socket closed.")
 
 
-
 if __name__ == '__main__':
     fdx = VectorFDX(target_port=2809)
     fdx.create_udp_socket()
-    # fdx.start_receiving()
     fdx.start_command()
     fdx.send_fdx_data()
-    # time.sleep(1)
-    # fdx.data_exchange_command(1, b'\x01\x02\x03\x04')
-    # fdx.send_fdx_data()
-    # time.sleep(1)
-    # fdx.stop_command(True)
-    # fdx.send_fdx_data()
-    # time.sleep(1)
-    # received_data = fdx.get_received_data()
-    # print(f"Received data: {received_data}")
     # fdx.close_socket()
-
