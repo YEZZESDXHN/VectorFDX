@@ -21,15 +21,15 @@ class VectorFDX(object):
     COMMAND_CODE_FUNCTION_CALL = 0x000C
     COMMAND_CODE_FUNCTION_CALL_ERROR = 0x000D
 
-    def __init__(self, fdx_major_version: int = 2, fdx_minor_version: int = 0,
+    def __init__(self, fdx_major_version: int = 2, fdx_minor_version: int = 1,
                  fdx_byte_order: Literal["little", "big"] = 'big',
                  local_ip='127.0.0.1', local_port: int = 2000,
                  target_ip='127.0.0.1', target_port: int = 2001):
         self.max_len = 0xffe3
         self.fdx_data = b''  # 用于存储 FDX 数据
         self.fdx_signature = b'\x43\x41\x4E\x6F\x65\x46\x44\x58'
-        self.fdx_major_version = fdx_major_version.to_bytes(1, 'little')
-        self.fdx_minor_version = fdx_minor_version.to_bytes(1, 'little')
+        self.fdx_major_version = fdx_major_version.to_bytes(1, fdx_byte_order)
+        self.fdx_minor_version = fdx_minor_version.to_bytes(1, fdx_byte_order)
         self.number_of_commands = 0  # 初始化为0，在添加命令时累加
         self.sequence_number = 1
         self.fdx_byte_order = fdx_byte_order
@@ -99,7 +99,8 @@ class VectorFDX(object):
                     self.parse_fdx_data(data, addr)
                 # print(f"Received data from {addr}: {data.hex()}")
             except socket.timeout:
-                print('socket.timeout')
+                pass
+                # print('socket.timeout')
             except Exception as e:
                 if self.is_running:  # 仅当 is_running 为 True 时才打印错误
                     print(f"Error receiving data: {e}")
@@ -108,15 +109,23 @@ class VectorFDX(object):
 
     def parse_fdx_data(self, data, addr):
         """解析 FDX 数据"""
-        print(data.hex(' '))
+        print(f"rec :{data.hex(' ')}")
         try:
             # 检查数据长度是否足够
             header_len = 16
             if len(data) < header_len + 4:
                 print(f"Data too short: {len(data)} bytes")
                 return
-            fdx_signature, major_version, minor_version, number_of_commands, sequence_number, protocol_flags, reserved = struct.unpack(
-                f'<8sBBHHBB', data[:header_len])
+
+            if data[14] == 1: # big
+                fdx_signature, major_version, minor_version, number_of_commands, sequence_number, protocol_flags, reserved = struct.unpack(
+                    f'>8sBBHHBB', data[:header_len])
+            else:
+                fdx_signature, major_version, minor_version, number_of_commands, sequence_number, protocol_flags, reserved = struct.unpack(
+                    f'<8sBBHHBB', data[:header_len])
+
+
+
             if fdx_signature != self.fdx_signature:
                 raise ValueError("Invalid FDX signature.")
             if protocol_flags == 1:
@@ -301,9 +310,27 @@ class VectorFDX(object):
             self.fdx_data = self.build_fdx_header() + command
         # print(f"data_exchange_command: {self.fdx_data.hex(' ').upper()}")
 
+    def status_command(self, is_add_command: bool = False):
+        """创建并添加状态命令"""
+        command = self._create_command(self.COMMAND_CODE_STATUS)
+        if is_add_command:
+            self._add_command(command)
+        else:
+            self.fdx_data = self.build_fdx_header() + command
+        # print(f"stop_command: {self.fdx_data.hex(' ').upper()}")
+
+    def status_request_command(self, is_add_command: bool = False):
+        """创建并添加状态请求命令"""
+        command = self._create_command(self.COMMAND_CODE_STATUS_REQUEST)
+        if is_add_command:
+            self._add_command(command)
+        else:
+            self.fdx_data = self.build_fdx_header() + command
+        # print(f"stop_command: {self.fdx_data.hex(' ').upper()}")
+
     def send_fdx_data(self):
         """发送 FDX 数据"""
-        print(self.fdx_data.hex(' '))
+        # print(f"send:{self.fdx_data.hex(' ')}")
         if not self.fdx_data:
             print("No FDX data to send.")
             return

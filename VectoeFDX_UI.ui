@@ -157,7 +157,7 @@
    <widget class="QPushButton" name="pushButton_StopCANoe">
     <property name="geometry">
      <rect>
-      <x>210</x>
+      <x>140</x>
       <y>170</y>
       <width>75</width>
       <height>23</height>
@@ -167,6 +167,19 @@
      <string>StopCANoe</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="pushButton_StatusRequest">
+    <property name="geometry">
+     <rect>
+      <x>230</x>
+      <y>170</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>StatusRequest</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -174,7 +187,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>26</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>

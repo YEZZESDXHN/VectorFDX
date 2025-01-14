@@ -10,6 +10,8 @@ from VectoeFDX_UI import Ui_MainWindow
 class QtVectorFDX(VectorFDX):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+    def handle_status_command(self, command_data, addr):
+        print('my handle_status_command')
 
 
 
@@ -23,14 +25,15 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.target_ip='127.0.0.1'
         self.target_port: int = 2001
 
-        self.fdx=QtVectorFDX(local_ip=self.local_ip,local_port=self.local_port,
-                             target_ip=self.target_ip,target_port=self.target_port)
+        self.fdx = QtVectorFDX(fdx_byte_order='big',local_ip=self.local_ip,local_port=self.local_port,
+                               target_ip=self.target_ip,target_port=self.target_port)
 
         self.connect_signals()
     def connect_signals(self):
         self.pushButton_StartCANoe.clicked.connect(self.start_canoe_command)
         self.pushButton_StopCANoe.clicked.connect(self.stop_canoe_command)
         self.pushButton_fdxConnect.clicked.connect(self.operate_fdx_connection)
+        self.pushButton_StatusRequest.clicked.connect(self.status_request_command)
 
     def start_canoe_command(self):
         self.fdx.start_command()
@@ -38,6 +41,10 @@ class MainWindows(QMainWindow, Ui_MainWindow):
 
     def stop_canoe_command(self):
         self.fdx.stop_command()
+        self.fdx.send_fdx_data()
+
+    def status_request_command(self):
+        self.fdx.status_request_command()
         self.fdx.send_fdx_data()
 
 
