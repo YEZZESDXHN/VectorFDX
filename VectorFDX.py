@@ -38,7 +38,7 @@ class VectorFDX(object):
         else:
             self.fdx_protocol_flags = 0
 
-        self.reserved = int(0).to_bytes(1, 'little')
+        self.reserved = 0
 
         self.udp_socket = None
         self.local_ip = local_ip
@@ -54,7 +54,7 @@ class VectorFDX(object):
             self.COMMAND_CODE_START: self.handle_start_command,
             self.COMMAND_CODE_STOP: self.handle_stop_command,
             self.COMMAND_CODE_KEY: self.handle_key_command,
-            # self.COMMAND_CODE_STATUS: self.handle_status_command,
+            self.COMMAND_CODE_STATUS: self.handle_status_command,
             self.COMMAND_CODE_DATA_EXCHANGE: self.handle_data_exchange_command,
             self.COMMAND_CODE_DATA_REQUEST: self.handle_data_request_command,
             self.COMMAND_CODE_DATA_ERROR: self.handle_data_error,
@@ -108,6 +108,7 @@ class VectorFDX(object):
 
     def parse_fdx_data(self, data, addr):
         """解析 FDX 数据"""
+        print(data.hex(' '))
         try:
             # 检查数据长度是否足够
             header_len = 16
@@ -162,7 +163,9 @@ class VectorFDX(object):
     def handle_key_command(self, command_data, addr):
         """处理按键命令"""
         pass
-
+    def handle_status_command(self, command_data, addr):
+        """处理状态命令"""
+        pass
     def handle_data_exchange_command(self, command_data, addr):
         """处理数据交换命令"""
         pass
@@ -194,18 +197,18 @@ class VectorFDX(object):
     def build_fdx_header(self):
         """构建 FDX 头部"""
         self.number_of_commands = 1
-        if self.fdx_protocol_flags == 1:
-            self.fdx_byte_order = 'big'
-        else:
-            self.fdx_byte_order = 'little'
+        # if self.fdx_protocol_flags == 1:
+        #     self.fdx_byte_order = 'big'
+        # else:
+        #     self.fdx_byte_order = 'little'
         header = (
                 self.fdx_signature +
                 self.fdx_major_version +
                 self.fdx_minor_version +
-                self.number_of_commands.to_bytes(2, 'little') +
-                self.sequence_number.to_bytes(2, 'little') +
-                self.fdx_protocol_flags.to_bytes(1, 'little') +
-                self.reserved
+                self.number_of_commands.to_bytes(2, self.fdx_byte_order) +
+                self.sequence_number.to_bytes(2, self.fdx_byte_order) +
+                self.fdx_protocol_flags.to_bytes(1, self.fdx_byte_order) +
+                self.reserved.to_bytes(1, self.fdx_byte_order)
         )
         self.sequence_number += 1
         if self.sequence_number == 0x7FFF:
@@ -300,6 +303,7 @@ class VectorFDX(object):
 
     def send_fdx_data(self):
         """发送 FDX 数据"""
+        print(self.fdx_data.hex(' '))
         if not self.fdx_data:
             print("No FDX data to send.")
             return
