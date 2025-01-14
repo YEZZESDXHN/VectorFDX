@@ -72,6 +72,7 @@ class VectorFDX(object):
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         local_address = (self.local_ip, self.local_port)
         self.udp_socket.bind(local_address)
+        self.udp_socket.settimeout(1)
 
     def start_receiving(self):
         """启动接收线程"""
@@ -86,7 +87,6 @@ class VectorFDX(object):
         self.is_running = False
         if self.receive_thread:
             self.receive_thread.join()
-            self.receive_thread = None
 
     def _receive_data_thread(self):
         """接收数据的线程函数"""
@@ -98,6 +98,8 @@ class VectorFDX(object):
                 else:
                     self.parse_fdx_data(data, addr)
                 # print(f"Received data from {addr}: {data.hex()}")
+            except socket.timeout:
+                print('socket.timeout')
             except Exception as e:
                 if self.is_running:  # 仅当 is_running 为 True 时才打印错误
                     print(f"Error receiving data: {e}")
@@ -303,6 +305,8 @@ class VectorFDX(object):
             return
         target_address = (self.target_ip, self.target_port)
         try:
+            if not self.udp_socket:
+                self.create_udp_socket()
             self.udp_socket.sendto(self.fdx_data, target_address)
             # print(f"Sent {len(self.fdx_data)} bytes of FDX data to {target_address}")
             self.fdx_data = b''  # 发送后清空数据
@@ -311,9 +315,11 @@ class VectorFDX(object):
 
     def close_socket(self):
         """关闭 UDP 套接字"""
-        self.stop_receiving()
+        if self.is_running:
+            self.stop_receiving()
         if self.udp_socket:
             self.udp_socket.close()
+            self.udp_socket = None
             print("UDP socket closed.")
 
 
