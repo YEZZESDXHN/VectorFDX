@@ -17,7 +17,7 @@ class VectorFDX(object):
     COMMAND_CODE_FUNCTION_CALL = 0x000C
     COMMAND_CODE_FUNCTION_CALL_ERROR = 0x000D
 
-    def __init__(self, fdx_major_version=2, fdx_minor_version=0, local_ip='127.0.0.1', local_port=12345, target_ip='127.0.0.1', target_port=12346):
+    def __init__(self, fdx_major_version=2, fdx_minor_version=0, local_ip='127.0.0.1', local_port=2000, target_ip='127.0.0.1', target_port=2001):
         self.max_len = 0xffe3
         self.fdx_data = b''  # 用于存储 FDX 数据
         self.fdx_signature = b'\x43\x41\x4E\x6F\x65\x46\x44\x58'
@@ -43,6 +43,7 @@ class VectorFDX(object):
 
     def build_fdx_header(self):
         """构建 FDX 头部"""
+        self.number_of_commands = 1
         header = (
             self.fdx_signature +
             self.fdx_major_version +
@@ -52,6 +53,9 @@ class VectorFDX(object):
             self.fdx_protocol_flags.to_bytes(2, 'big') +
             self.reserved
         )
+        self.sequence_number += 1
+        if self.sequence_number == 0x7FFF:
+            self.sequence_number = 1
         return header
 
     def _add_command(self, command_bytes: bytes):
@@ -84,8 +88,6 @@ class VectorFDX(object):
             self._add_command(command)
         else:
             self.fdx_data = self.build_fdx_header() + command
-            self.number_of_commands = 1
-            self.sequence_number += 1
         print(self.fdx_data)
 
 
@@ -96,8 +98,6 @@ class VectorFDX(object):
             self._add_command(command)
         else:
             self.fdx_data = self.build_fdx_header() + command
-            self.number_of_commands = 1
-            self.sequence_number += 1
         print(self.fdx_data)
 
     def key_command(self, canoe_key_code: int, is_add_command: bool = False):
@@ -110,8 +110,6 @@ class VectorFDX(object):
             self._add_command(command)
         else:
             self.fdx_data = self.build_fdx_header() + command
-            self.number_of_commands = 1
-            self.sequence_number += 1
         print(self.fdx_data)
 
     def datarequest_command(self, group_id: int, is_add_command: bool = False):
@@ -124,8 +122,6 @@ class VectorFDX(object):
             self._add_command(command)
         else:
             self.fdx_data = self.build_fdx_header() + command
-            self.number_of_commands = 1
-            self.sequence_number += 1
         print(self.fdx_data)
 
     def data_exchange_command(self, group_id: int, data_bytes: bytes, is_add_command: bool = False):
@@ -141,11 +137,11 @@ class VectorFDX(object):
         group_id_bytes = group_id.to_bytes(2, 'big')
         command = self._create_command(self.COMMAND_CODE_DATA_EXCHANGE, group_id_bytes + data_size_bytes + data_bytes)
         if is_add_command:
+            if len(self.fdx_data) < 20:
+                raise ValueError ("must build fdx header before add command")
             self._add_command(command)
         else:
             self.fdx_data = self.build_fdx_header() + command
-            self.number_of_commands = 1
-            self.sequence_number += 1
         print(self.fdx_data)
 
     def send_fdx_data(self):
@@ -169,5 +165,7 @@ class VectorFDX(object):
 
 if __name__ == '__main__':
     fdx = VectorFDX()
-    fdx.data_exchange_command(1, b'\x01\x02\x03\x04', True)
-    fdx.stop_command(True)
+    # fdx.data_exchange_command(1, b'\x01\x02\x03\x04')
+    # fdx.stop_command(True)
+    # fdx.data_exchange_command(1, b'\x01\x02\x03\x04')
+
