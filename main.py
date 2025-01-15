@@ -1,17 +1,19 @@
 import sys
+from typing import Literal
 
-from PyQt5.QtCore import QCoreApplication, Qt
+from PyQt5.QtCore import QCoreApplication, Qt, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMainWindow, QApplication
 
 from VectorFDX import VectorFDX
 from VectoeFDX_UI import Ui_MainWindow
 
 
-class QtVectorFDX(VectorFDX):
+class QVectorFDX(VectorFDX, QObject):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-    def handle_status_command(self, command_data, addr):
-        print('my handle_status_command')
+    def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+        parent_result = super().handle_status_command(command_data, addr, byteorder)
+        print(parent_result)
 
 
 
@@ -25,10 +27,17 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.target_ip='127.0.0.1'
         self.target_port: int = 2001
 
-        self.fdx = QtVectorFDX(fdx_byte_order='big',local_ip=self.local_ip,local_port=self.local_port,
-                               target_ip=self.target_ip,target_port=self.target_port)
+        self.fdx = QVectorFDX(fdx_byte_order='big',local_ip=self.local_ip,local_port=self.local_port,
+                                target_ip=self.target_ip,target_port=self.target_port)
 
         self.connect_signals()
+        self.ui_setdisabled(True)
+
+    def ui_setdisabled(self, Disabled: bool):
+        self.pushButton_StartCANoe.setDisabled(Disabled)
+        self.pushButton_StopCANoe.setDisabled(Disabled)
+        self.pushButton_StatusRequest.setDisabled(Disabled)
+
     def connect_signals(self):
         self.pushButton_StartCANoe.clicked.connect(self.start_canoe_command)
         self.pushButton_StopCANoe.clicked.connect(self.stop_canoe_command)
@@ -51,8 +60,10 @@ class MainWindows(QMainWindow, Ui_MainWindow):
     def operate_fdx_connection(self):
         if self.pushButton_fdxConnect.text() == 'Connect':
             self.connect_fdx()
+            self.ui_setdisabled(False)
         elif self.pushButton_fdxConnect.text() == 'Connected':
             self.disconnect_fdx()
+            self.ui_setdisabled(True)
 
 
     def connect_fdx(self):

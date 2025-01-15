@@ -17,9 +17,20 @@ class VectorFDX(object):
     COMMAND_CODE_FREE_RUNNING_CANCEL = 0x0009
     COMMAND_CODE_STATUS_REQUEST = 0x000A
     COMMAND_CODE_SEQUENCE_NUMBER_ERROR = 0x000B
-    COMMAND_CODE_INCREMENT_TIME = 0x0011
     COMMAND_CODE_FUNCTION_CALL = 0x000C
     COMMAND_CODE_FUNCTION_CALL_ERROR = 0x000D
+    COMMAND_CODE_INCREMENT_TIME = 0x0011
+
+    # Data Error Code
+    DataErrorCode_MeasurmentNotRunning = 1
+    DataErrorCode_GroupIdInvalid = 2
+    DataErrorCode_DataSizeToLarge = 3
+
+    # State of Measurement
+    MeasurementState_NotRunning = 1
+    MeasurementState_PreStart = 2
+    MeasurementState_Running = 3
+    MeasurementState_Stop = 4
 
     def __init__(self, fdx_major_version: int = 2, fdx_minor_version: int = 1,
                  fdx_byte_order: Literal["little", "big"] = 'big',
@@ -60,11 +71,11 @@ class VectorFDX(object):
             self.COMMAND_CODE_DATA_ERROR: self.handle_data_error,
             self.COMMAND_CODE_FREE_RUNNING_REQUEST: self.handle_free_running_request,
             self.COMMAND_CODE_FREE_RUNNING_CANCEL: self.handle_free_running_cancel,
-            # self.COMMAND_CODE_STATUS_REQUEST: self.handle_status_request,
+            self.COMMAND_CODE_STATUS_REQUEST: self.handle_status_request,
             self.COMMAND_CODE_SEQUENCE_NUMBER_ERROR: self.handle_sequence_number_error,
-            # self.COMMAND_CODE_INCREMENT_TIME: self.handle_increment_time,
-            # self.COMMAND_CODE_FUNCTION_CALL: self.handle_function_call,
+            self.COMMAND_CODE_FUNCTION_CALL: self.handle_function_call,
             self.COMMAND_CODE_FUNCTION_CALL_ERROR: self.handle_function_call_error,
+            self.COMMAND_CODE_INCREMENT_TIME: self.handle_increment_time,
         }
 
     def create_udp_socket(self):
@@ -109,7 +120,7 @@ class VectorFDX(object):
 
     def parse_fdx_data(self, data, addr):
         """解析 FDX 数据"""
-        print(f"rec :{data.hex(' ')}")
+        # print(f"rec :{data.hex(' ')}")
         try:
             # 检查数据长度是否足够
             header_len = 16
@@ -147,61 +158,146 @@ class VectorFDX(object):
                 # print(f"command_size={command_size}, command_code={command_code}, command_data={command_data.hex()}")
 
                 # 调用命令处理函数
-                self.handle_command(command_code, command_data, addr)
+                self.handle_command(command_code, command_data, addr, byteorder)
                 offset += command_size
 
         except Exception as e:
             print(f"Error parsing FDX data: {e}")
 
-    def handle_command(self, command_code, command_data, addr):
+    def handle_command(self, command_code, command_data, addr, byteorder):
         """根据命令代码调用相应的处理函数"""
         handler = self.command_handlers.get(command_code)
         if handler:
-            handler(command_data, addr)
+            handler(command_data, addr, byteorder)
         else:
             print(f"Unknown command code: {command_code}")
 
-    def handle_start_command(self, command_data, addr):
+    def handle_start_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理开始命令"""
         pass
 
-    def handle_stop_command(self, command_data, addr):
+    def handle_stop_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理停止命令"""
         pass
 
-    def handle_key_command(self, command_data, addr):
+    def handle_key_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理按键命令"""
-        pass
-    def handle_status_command(self, command_data, addr):
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            canoekeycode = struct.unpack(f'>I', command_data)
+        else:
+            canoekeycode = struct.unpack(f'<I', command_data)
+
+        ret['canoekeycode'] = canoekeycode
+        return ret
+
+    def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理状态命令"""
-        pass
-    def handle_data_exchange_command(self, command_data, addr):
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            measurementstate, _, timestamps = struct.unpack(f'>B3pQ', command_data)
+        else:
+            measurementstate, _, timestamps = struct.unpack(f'<B3pQ', command_data)
+
+        ret['measurementstate'] = measurementstate
+        ret['timestamps'] = timestamps
+        return ret
+
+    def handle_data_exchange_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理数据交换命令"""
-        pass
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            groupid, datasize, databytes = struct.unpack(f'>HH8p', command_data)
+        else:
+            groupid, datasize, databytes = struct.unpack(f'<HH8p', command_data)
 
-    def handle_data_request_command(self, command_data, addr):
+        ret['groupid'] = groupid
+        ret['datasize'] = datasize
+        ret['databytes'] = databytes
+        return ret
+
+    def handle_data_request_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理数据请求命令"""
-        pass
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            groupid = struct.unpack(f'>H', command_data)
+        else:
+            groupid = struct.unpack(f'<H', command_data)
 
-    def handle_data_error(self, command_data, addr):
+        ret['groupid'] = groupid
+        return ret
+
+    def handle_data_error(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理数据异常"""
-        pass
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            groupid, dataerrorcode = struct.unpack(f'>HH', command_data)
+        else:
+            groupid, dataerrorcode = struct.unpack(f'<HH', command_data)
 
-    def handle_free_running_request(self, command_data, addr):
+        ret['groupid'] = groupid
+        ret['dataerrorcode'] = dataerrorcode
+        return ret
+
+    def handle_free_running_request(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理自由运行请求"""
-        pass
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            groupid, flags, cycletime, firstduration = struct.unpack(f'>HHII', command_data)
+        else:
+            groupid, flags, cycletime, firstduration = struct.unpack(f'<HHII', command_data)
 
-    def handle_free_running_cancel(self, command_data, addr):
+        ret['groupid'] = groupid
+        ret['flags'] = flags
+        ret['cycletime'] = cycletime
+        ret['firstduration'] = firstduration
+        return ret
+
+    def handle_free_running_cancel(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理取消自由运行"""
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            groupid = struct.unpack(f'>H', command_data)
+        else:
+            groupid = struct.unpack(f'<H', command_data)
+
+        ret['groupid'] = groupid
+        return ret
+
+    def handle_status_request(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+        """处理状态请求"""
         pass
 
-    def handle_sequence_number_error(self, command_data, addr):
+    def handle_sequence_number_error(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理序列错误"""
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            receivedSeqNr, expectedSeqNr = struct.unpack(f'>HH', command_data)
+        else:
+            receivedSeqNr, expectedSeqNr = struct.unpack(f'<HH', command_data)
+
+        ret['receivedSeqNr'] = receivedSeqNr
+        ret['expectedSeqNr'] = expectedSeqNr
+        return ret
+
+    def handle_function_call(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+        """处理function触发命令"""
         pass
 
-    def handle_function_call_error(self, command_data, addr):
+    def handle_function_call_error(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         """处理function触发异常"""
         pass
+
+    def handle_increment_time(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+        """处理时间命令"""
+        ret = {'remote_addr': addr}
+        if byteorder == 'big':
+            _, timestep = struct.unpack(f'>IQ', command_data)
+        else:
+            _, timestep = struct.unpack(f'<IQ', command_data)
+
+        ret['timestep'] = timestep
+        return ret
 
     def build_fdx_header(self):
         """构建 FDX 头部"""
