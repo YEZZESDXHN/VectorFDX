@@ -1,4 +1,5 @@
 import sys
+import threading
 import time
 from threading import Thread, Event
 from queue import Queue
@@ -6,22 +7,29 @@ from queue import Queue
 from PyQt5.QtCore import pyqtSlot, QCoreApplication, Qt, QTimer, QObject, pyqtSignal
 from PyQt5.QtWidgets import QMainWindow, QApplication
 from pymodbus.client import ModbusSerialClient
-from pymodbus.exceptions import ModbusException
+from pymodbus.exceptions import ModbusException, ModbusIOException
 
 from VectoeFDX_UI import Ui_MainWindow
 
 
-class ModbusRequest(object):
-    """封装 Modbus 请求"""
+class ModbusRequestParameter:
+    def __init__(self):
+        self.code = None
+        self.value = 0
+        self.values = [0]
+        self.slave= 1
+        self.address= 0
+        self.count=1
+        self.no_response_expected=False
 
-    def __init__(self, code, slave, address, value=None, count=None, no_response_expected=False):
-        self.code = code
-        self.slave = slave
-        self.address = address
-        self.value = value
-        self.count = count
-        self.no_response_expected = no_response_expected
-
+    def init(self):
+        self.code = None
+        self.value = 0
+        self.values = [0]
+        self.slave = 1
+        self.address = 0
+        self.count = 1
+        self.no_response_expected = False
 
 class CANoeBenchModbus(object):
     CodeReadCoils = 0x01
@@ -30,6 +38,8 @@ class CANoeBenchModbus(object):
     CodeReadInputRegisters = 0x04
     CodeWriteSingleCoil = 0x05
     CodeWriteRegister = 0x06
+    CodeReadExceptionStatus = 0x07
+    CodeWriteRegisters = 0x10
 
     def __init__(self,
                  port='com1',
@@ -38,8 +48,7 @@ class CANoeBenchModbus(object):
                  serial_parity="N",
                  serial_stop_bits: int = 1,
                  serial_timeout: int = 1,
-                 queue_maxsize: int = 100,  # 新增队列最大值参数
-                 read_interval: float = 1.0,  # 新增读取间隔参数
+                 queue_maxsize: int = 20,  # 新增队列最大值参数
                  ):
         super().__init__()
 
@@ -52,12 +61,15 @@ class CANoeBenchModbus(object):
         self.serial_stop_bits = serial_stop_bits
         self.serial_timeout = serial_timeout
         self.retries = 0
-        self.is_running = False
+
+        self.is_connected = False
+        self.modbus_cycle_thread = None
+        self.modbus_cycle_is_run_event = threading.Event()
+        self.is_stop_cycle_loop = False
+        self.modbus_single_thread = None
         self.request_queue = Queue(maxsize=queue_maxsize)  # 使用 maxsize
-        self.worker_thread = None
-        self.add_request_thread = None  # 添加请求的线程
-        self.stop_add_request_event = Event()  # 控制添加请求线程停止的事件
-        self.read_interval = read_interval
+        # self.request_parameter = ModbusRequestParameter()
+        self.stop_read_cycle_request_event = Event()  # 控制添加请求线程停止的事件
         self.modbus_response_handlers = {
             self.CodeReadCoils: self.handler_read_coils_response,
             self.CodeReadDiscreteInputs: self.handler_read_discrete_inputs_response,
@@ -68,99 +80,242 @@ class CANoeBenchModbus(object):
 
         }
 
+        self.slaves_list = {
+            1: 3,
+            2: 3,
+        }
+        self.cycle_read_slaves_list = [1]
+
+        self.modbus_request_handlers = {
+            # self.CodeReadCoils: self.handler_read_coils_response,
+            # self.CodeReadDiscreteInputs: self.handler_read_discrete_inputs_response,
+            self.CodeReadHoldingRegisters: self._read_holding_registers,
+            # self.CodeReadInputRegisters: self.handler_read_input_registers_response,
+            # self.CodeWriteSingleCoil: self.handler_write_single_coil_response,
+            self.CodeWriteRegister: self._write_register,
+            self.CodeWriteRegisters: self._write_registers,
+        }
+
+    def create_cycle_and_single_thread(self):
+        if self.modbus_cycle_thread is None or not self.modbus_cycle_thread.is_alive():
+            self.modbus_cycle_thread = threading.Thread(target=self._cycle_read__loop, daemon=True)
+        if self.modbus_single_thread is None or not self.modbus_single_thread.is_alive():
+            self.modbus_single_thread = threading.Thread(target=self._single__loop, daemon=True)
+            self.modbus_single_thread.start()
+
     def create_modbus_rtu_service(self):
-        try:
-            self.modbus_client = ModbusSerialClient(
-                port=self.port,
-                baudrate=self.serial_baud_rate,
-                bytesize=self.serial_bytesize,
-                parity=self.serial_parity,
-                stopbits=self.serial_stop_bits,
-                timeout=self.serial_timeout,
-                retries=self.retries,
-            )
-            if not self.modbus_client.connect():
-                print(f"无法连接到从站进行写入")
-                return False
-            return True
-        except ModbusException as e:
-            print(f"向从站写入数据时发生错误: {e}")
-            return False
-
-    def start_modbus_service(self):
-        """启动 Modbus 服务，开始处理请求"""
-        if self.is_running:
-            return
-        self.is_running = True
-        self.worker_thread = Thread(target=self._run_request_loop, daemon=True)
-        self.worker_thread.start()
-        self.stop_add_request_event.clear()  # 清除停止事件
-        self.add_request_thread = Thread(target=self._add_request_loop, daemon=True)
-        self.add_request_thread.start()
-
-    def stop_modbus_service(self):
-        """停止 Modbus 服务"""
-        self.is_running = False
-        self.stop_add_request_event.set()  # 设置停止事件
-        if self.worker_thread:
-            self.worker_thread.join()
-            self.worker_thread = None
-        if self.add_request_thread:
-            self.add_request_thread.join()
-            self.add_request_thread = None
-
-    def enqueue_request(self, request):
-        """将请求添加到队列"""
-        self.request_queue.put(request, block=True)  # 阻塞添加
-
-    def _run_request_loop(self):
-        """循环处理请求队列中的请求"""
-        while self.is_running:
+        if not self.is_connected:
             try:
-                request = self.request_queue.get(timeout=0.1)
-                self._process_request(request)
-                self.request_queue.task_done()
+                self.modbus_client = ModbusSerialClient(
+                    port=self.port,
+                    baudrate=self.serial_baud_rate,
+                    bytesize=self.serial_bytesize,
+                    parity=self.serial_parity,
+                    stopbits=self.serial_stop_bits,
+                    timeout=self.serial_timeout,
+                    retries=self.retries,
+                )
+                if not self.modbus_client.connect():
+                    print(f"无法连接到从站进行写入")
+                    return False
+
+                self.is_connected = True
+                self.create_cycle_and_single_thread()
+                return True
+            except ModbusException as e:
+                print(f"向从站写入数据时发生错误: {e}")
+                return False
             except Exception as e:
-                # print(f"Error in request loop: {e}")
-                pass
+                print(f"创建modbus rtu错误:{e}")
+                return False
+    def start_cycle_read__loop(self):
+        if self.modbus_cycle_thread is not None and self.is_connected:
+            self.modbus_cycle_is_run_event.set()
+            self.is_stop_cycle_loop = False
+            self.create_cycle_and_single_thread()
+            self.modbus_cycle_thread.start()
 
-    def _process_request(self, request):
-        """处理单个 Modbus 请求"""
-        try:
-            if request.code == self.CodeReadHoldingRegisters:
-                response = self.modbus_client.read_holding_registers(slave=request.slave, address=request.address,
-                                                                     count=request.count)
-                if not response.isError():
-                    self.handle_command(request.code, response)
-                else:
-                    print(f"Error reading registers from slave {request.slave}, address {request.address}")
-            elif request.code == self.CodeWriteRegister:
-                response = self.modbus_client.write_register(slave=request.slave, address=request.address,
-                                                             value=request.value)
-                if not response.isError():
-                    self.handle_command(request.code, response)
-                else:
-                    print(f"Error writing register to slave {request.slave}, address {request.address}")
-        except Exception as e:
-            print(f"Error processing request: {e}")
+    def stop_cycle_read__loop(self):
+        if self.is_connected and self.modbus_cycle_thread.is_alive():
+            self.modbus_cycle_is_run_event.clear()
+            self.is_stop_cycle_loop = True
+            self.modbus_cycle_thread.join()
 
-    def write_register(self, address: int, value: int, *, slave: int = 1, no_response_expected: bool = False):
+    def _single__loop(self):
+        if self.is_connected:
+            while True:
+                try:
+                    request_param = self.request_queue.get()
+                    self.request_handle_command(request_param)
+
+                except ModbusIOException as e:
+                    print(f"Modbus IO Error during writing: {e}")
+                    self.is_connected = False
+                    break
+                except Exception as e:
+                    print(f"Error during writing: {e}")
+
+
+    def _cycle_read__loop(self):
+        while True:
+            if self.is_stop_cycle_loop:
+                return
+            if self.modbus_cycle_is_run_event.is_set():
+                try:
+                    for slave in self.cycle_read_slaves_list:
+                        count = self.slaves_list.get(slave)
+                        if count:
+                            self.read_holding_registers(address=0,count=count,slave=slave)
+                except ModbusIOException as e:
+                    print(f"Modbus IO Error during reading: {e}")
+                    self.is_connected = False
+                    break
+                except Exception as e:
+                    print(f"Error during reading: {e}")
+            else:
+                self.modbus_cycle_is_run_event.wait()
+
+    def request_handle_command(self, request_parameter:ModbusRequestParameter):
+        """根据response调用相应的处理函数"""
+        handler = self.modbus_request_handlers.get(request_parameter.code)
+        if handler:
+            params = vars(request_parameter)
+            handler(**params)
+        else:
+            print(f"Unknown code: {request_parameter.code}")
+
+    def write_register(self, address: int, value: int, *, slave: int = 1,
+                       no_response_expected: bool = False,**kwargs):
         """写从站寄存器"""
-        request = ModbusRequest(code=self.CodeWriteRegister, slave=slave, address=address, value=value,
-                                no_response_expected=no_response_expected)
-        self.enqueue_request(request)
+        try:
+            response = self.modbus_client.write_register(slave=slave, address=address, value=value,
+                                                    no_response_expected=no_response_expected)
+            if not response.isError():
+                self.response_handle_command(self.CodeWriteRegister,response)
+                # return response.registers
+            else:
+                return None
+        except:
+            return None
 
-    def read_holding_registers(self, address: int, count: int, *, slave: int = 1):
+    def _write_register(self, address: int, value: int, *, slave: int = 1,
+                       no_response_expected: bool = False,**kwargs):
+        """写从站寄存器"""
+        try:
+            self.modbus_cycle_is_run_event.clear()
+            response = self.modbus_client.write_register(slave=slave, address=address, value=value,
+                                                    no_response_expected=no_response_expected)
+            self.modbus_cycle_is_run_event.set()
+            if not response.isError():
+                self.response_handle_command(self.CodeWriteRegister,response)
+                # return response.registers
+            else:
+                return None
+        except:
+            return None
+
+    def add_write_register_queue(self, address: int, value: int, *, slave: int = 1,
+                               no_response_expected: bool = False):
+        request_parameter = ModbusRequestParameter()
+        request_parameter.code=self.CodeWriteRegister
+        request_parameter.value=value
+        request_parameter.address = address
+        request_parameter.slave = slave
+        request_parameter.no_response_expected = no_response_expected
+
+        self.request_queue.put(request_parameter)
+
+    def write_registers(self, address: int, values: list[int], *, slave: int = 1,
+                       no_response_expected: bool = False,**kwargs):
+        """写从站寄存器"""
+        try:
+            response = self.modbus_client.write_registers(slave=slave, address=address, values=values,
+                                                    no_response_expected=no_response_expected)
+            if not response.isError():
+                self.response_handle_command(self.CodeWriteRegister,response)
+                # return response.registers
+            else:
+                return None
+        except:
+            return None
+
+    def _write_registers(self, address: int, values: list[int], *, slave: int = 1,
+                       no_response_expected: bool = False,**kwargs):
+        """写从站寄存器"""
+        try:
+            self.modbus_cycle_is_run_event.clear()
+            response = self.modbus_client.write_registers(slave=slave, address=address, values=values,
+                                                    no_response_expected=no_response_expected)
+            self.modbus_cycle_is_run_event.set()
+            if not response.isError():
+                self.response_handle_command(self.CodeWriteRegister,response)
+                # return response.registers
+            else:
+                return None
+        except Exception as e:
+            return None
+
+    def add_write_registers_queue(self, address: int, values: list[int], *, slave: int = 1,
+                               no_response_expected: bool = False):
+        request_parameter = ModbusRequestParameter()
+        request_parameter.code=self.CodeWriteRegisters
+        request_parameter.values=values
+        request_parameter.address = address
+        request_parameter.slave = slave
+        request_parameter.no_response_expected = no_response_expected
+
+        self.request_queue.put(request_parameter)
+
+    def read_holding_registers(self, address: int, count: int, *, slave: int = 1,
+                               no_response_expected: bool = False,**kwargs):
         """读从站寄存器"""
-        request = ModbusRequest(code=self.CodeReadHoldingRegisters, slave=slave, address=address, count=count)
-        self.enqueue_request(request)
+        try:
+            self.modbus_cycle_is_run_event.clear()
+            response = self.modbus_client.read_holding_registers(slave=slave, address=address, count=count,
+                                                            no_response_expected=no_response_expected)
+            self.modbus_cycle_is_run_event.set()
+            if not response.isError():
+                self.response_handle_command(self.CodeReadHoldingRegisters,response)
+                # return response.registers
+            else:
+                return None
+        except:
+            return None
 
-    def create_modbus_rtu_service_close(self):
+    def _read_holding_registers(self, address: int, count: int, *, slave: int = 1,
+                               no_response_expected: bool = False,**kwargs):
+        """读从站寄存器"""
+        try:
+            response = self.modbus_client.read_holding_registers(slave=slave, address=address, count=count,
+                                                            no_response_expected=no_response_expected)
+            if not response.isError():
+                self.response_handle_command(self.CodeReadHoldingRegisters,response)
+                # return response.registers
+            else:
+                return None
+        except:
+            return None
+
+    def add_read_holding_registers_queue(self, address: int, count: int, *, slave: int = 1,
+                               no_response_expected: bool = False):
+        self.request_parameter.code=self.CodeReadHoldingRegisters
+        self.request_parameter.count=count
+        self.request_parameter.address = address
+        self.request_parameter.slave = slave
+        self.request_parameter.no_response_expected = no_response_expected
+
+        self.request_queue.put(self.request_parameter)
+
+        self.request_parameter.init()
+
+
+    def modbus_rtu_service_close(self):
         """关闭 modbus_client"""
-        if self.modbus_client:
+        if self.modbus_client and self.modbus_client.connected:
             self.modbus_client.close()
+            self.is_connected = False
 
-    def handle_command(self, code, response):
+    def response_handle_command(self, code, response):
         """根据response调用相应的处理函数"""
         handler = self.modbus_response_handlers.get(code)
         if handler:
@@ -198,53 +353,49 @@ class CANoeBenchModbus(object):
         print(f'# handler_write_register_response:{response}')
         pass
 
-    def _add_request_loop(self):
-        """循环添加读取寄存器请求"""
-        while not self.stop_add_request_event.is_set():
-            self.read_holding_registers(address=0, count=10)  # 示例：读取地址 0 开始的 10 个寄存器
-            time.sleep(self.read_interval)
 
 
 class MainWindows(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
-        self.modbus_client = CANoeBenchModbus()
+        self.modbus_client = CANoeBenchModbus(port='com6')
         self.connect_signal()
         self.modbus_connected = False
 
     def connect_signal(self):
         self.pushButton_fdxConnect.clicked.connect(self.toggle_modbus_read)
-        self.pushButton_StatusRequest.clicked.connect(self.set_write_request_flag)
+        self.pushButton_StartCANoe.clicked.connect(self.write_modbus)
+        self.pushButton_StopCANoe.clicked.connect(self.write_modbus1)
+
+    def write_modbus(self):
+        if self.modbus_connected:
+            # self.modbus_client.write_register(address=0, value=0)
+            self.modbus_client.add_write_register_queue(address=0,value=0)
+    def write_modbus1(self):
+        if self.modbus_connected:
+            # self.modbus_client.write_register(address=0,value=1)
+            self.modbus_client.add_write_register_queue(address=0,value=1)
 
     @pyqtSlot()
     def toggle_modbus_read(self):
         """连接/断开 Modbus 客户端并开始/停止读取"""
-        if not self.modbus_connected:
+        if self.modbus_client.modbus_client == None:
             if self.modbus_client.create_modbus_rtu_service():
-                self.modbus_client._add_request_loop()
-                self.modbus_connected = True
-                self.pushButton_fdxConnect.setText("断开")
+                pass
             else:
-                print("Modbus 连接失败")
+                self.modbus_client.stop_cycle_read__loop()
+                self.pushButton_fdxConnect.setText("连接")
+                self.modbus_connected = False
+
+        if not self.modbus_connected:
+            self.modbus_client.start_cycle_read__loop()
+            self.pushButton_fdxConnect.setText("断开")
+            self.modbus_connected = True
         else:
-            self.modbus_client.stop_modbus_service()
-            self.modbus_client.create_modbus_rtu_service_close()
-            self.modbus_connected = False
+            self.modbus_client.stop_cycle_read__loop()
             self.pushButton_fdxConnect.setText("连接")
-
-    def start_reading_registers(self):
-        """开始读取从站 1 和 2 的寄存器 1-5"""
-        for slave in [1, 2]:
-            self.modbus_client.read_holding_registers(address=0, count=5, slave=slave)
-
-
-    def set_write_request_flag(self):
-        """设置写寄存器标志"""
-        if self.modbus_connected:
-            self.modbus_client.write_register(address=1, value=100, slave=1)
-        else:
-            print("Modbus not connected")
+            self.modbus_connected = False
 
 
 
