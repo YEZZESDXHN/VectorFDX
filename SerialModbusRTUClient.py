@@ -1,15 +1,10 @@
-import sys
 import threading
-import time
-from threading import Thread, Event
+from threading import Event
 from queue import Queue
 
-from PyQt5.QtCore import pyqtSlot, QCoreApplication, Qt, QTimer, QObject, pyqtSignal
-from PyQt5.QtWidgets import QMainWindow, QApplication
 from pymodbus.client import ModbusSerialClient
 from pymodbus.exceptions import ModbusException, ModbusIOException
 
-from VectoeFDX_UI import Ui_MainWindow
 
 
 class ModbusRequestParameter:
@@ -31,7 +26,7 @@ class ModbusRequestParameter:
         self.count = 1
         self.no_response_expected = False
 
-class CANoeBenchModbus(object):
+class SerialModbusRTUClient(object):
     CodeReadCoils = 0x01
     CodeReadDiscreteInputs = 0x02
     CodeReadHoldingRegisters = 0x03
@@ -81,10 +76,12 @@ class CANoeBenchModbus(object):
         }
 
         self.slaves_list = {
-            1: 3,
-            2: 3,
+            1: 10,
+            2: 10,
+            3: 10,
         }
-        self.cycle_read_slaves_list = [1]
+        self.cycle_read_slaves_list = [1,2,3]
+        self.offline_slaves_list = []
 
         self.modbus_request_handlers = {
             # self.CodeReadCoils: self.handler_read_coils_response,
@@ -191,7 +188,7 @@ class CANoeBenchModbus(object):
             response = self.modbus_client.write_register(slave=slave, address=address, value=value,
                                                     no_response_expected=no_response_expected)
             if not response.isError():
-                self.response_handle_command(self.CodeWriteRegister,response)
+                self.response_handle_command(slave, self.CodeWriteRegister,response)
                 # return response.registers
             else:
                 return None
@@ -207,7 +204,7 @@ class CANoeBenchModbus(object):
                                                     no_response_expected=no_response_expected)
             self.modbus_cycle_is_run_event.set()
             if not response.isError():
-                self.response_handle_command(self.CodeWriteRegister,response)
+                self.response_handle_command(slave, self.CodeWriteRegister,response)
                 # return response.registers
             else:
                 return None
@@ -232,7 +229,7 @@ class CANoeBenchModbus(object):
             response = self.modbus_client.write_registers(slave=slave, address=address, values=values,
                                                     no_response_expected=no_response_expected)
             if not response.isError():
-                self.response_handle_command(self.CodeWriteRegister,response)
+                self.response_handle_command(slave, self.CodeWriteRegister,response)
                 # return response.registers
             else:
                 return None
@@ -248,7 +245,7 @@ class CANoeBenchModbus(object):
                                                     no_response_expected=no_response_expected)
             self.modbus_cycle_is_run_event.set()
             if not response.isError():
-                self.response_handle_command(self.CodeWriteRegister,response)
+                self.response_handle_command(slave, self.CodeWriteRegister,response)
                 # return response.registers
             else:
                 return None
@@ -275,7 +272,7 @@ class CANoeBenchModbus(object):
                                                             no_response_expected=no_response_expected)
             self.modbus_cycle_is_run_event.set()
             if not response.isError():
-                self.response_handle_command(self.CodeReadHoldingRegisters,response)
+                self.response_handle_command(slave, self.CodeReadHoldingRegisters,response)
                 # return response.registers
             else:
                 return None
@@ -289,7 +286,7 @@ class CANoeBenchModbus(object):
             response = self.modbus_client.read_holding_registers(slave=slave, address=address, count=count,
                                                             no_response_expected=no_response_expected)
             if not response.isError():
-                self.response_handle_command(self.CodeReadHoldingRegisters,response)
+                self.response_handle_command(slave, self.CodeReadHoldingRegisters,response)
                 # return response.registers
             else:
                 return None
@@ -298,13 +295,14 @@ class CANoeBenchModbus(object):
 
     def add_read_holding_registers_queue(self, address: int, count: int, *, slave: int = 1,
                                no_response_expected: bool = False):
-        self.request_parameter.code=self.CodeReadHoldingRegisters
-        self.request_parameter.count=count
-        self.request_parameter.address = address
-        self.request_parameter.slave = slave
-        self.request_parameter.no_response_expected = no_response_expected
+        request_parameter = ModbusRequestParameter()
+        request_parameter.code=self.CodeReadHoldingRegisters
+        request_parameter.count=count
+        request_parameter.address = address
+        request_parameter.slave = slave
+        request_parameter.no_response_expected = no_response_expected
 
-        self.request_queue.put(self.request_parameter)
+        self.request_queue.put(request_parameter)
 
         self.request_parameter.init()
 
@@ -315,97 +313,41 @@ class CANoeBenchModbus(object):
             self.modbus_client.close()
             self.is_connected = False
 
-    def response_handle_command(self, code, response):
+    def response_handle_command(self, slave, code, response):
         """根据response调用相应的处理函数"""
         handler = self.modbus_response_handlers.get(code)
         if handler:
-            handler(response)
+            handler(slave,response)
         else:
             print(f"Unknown code: {code}")
 
-    def handler_read_coils_response(self, response):
+    def handler_read_coils_response(self, slave, response):
         """read_coils后处理"""
-        print(f'# handler_read_coils_response:{response}')
+        # print(f'# handler_read_coils_response:{response}')
         pass
 
-    def handler_read_discrete_inputs_response(self, response):
+    def handler_read_discrete_inputs_response(self, slave, response):
         """read_discrete_inputs后处理"""
-        print(f'# handler_read_discrete_inputs_response:{response}')
+        # print(f'# handler_read_discrete_inputs_response:{response}')
         pass
 
-    def handler_read_holding_registers_response(self, response):
+    def handler_read_holding_registers_response(self, slave, response):
         """read_holding_registers后处理"""
-        print(f'# handler_read_holding_registers_response:{response}')
+        # print(f'# handler_read_holding_registers_response:{response}')
         pass
 
-    def handler_read_input_registers_response(self, response):
+    def handler_read_input_registers_response(self, slave, response):
         """read_input_registers后处理"""
-        print(f'# handler_read_input_registers_response:{response}')
+        # print(f'# handler_read_input_registers_response:{response}')
         pass
 
-    def handler_write_single_coil_response(self, response):
+    def handler_write_single_coil_response(self, slave, response):
         """write_single_coil后处理"""
-        print(f'# handler_write_single_coil_response:{response}')
+        # print(f'# handler_write_single_coil_response:{response}')
         pass
 
-    def handler_write_register_response(self, response):
+    def handler_write_register_response(self, slave, response):
         """write_register_response后处理"""
-        print(f'# handler_write_register_response:{response}')
+        # print(f'# handler_write_register_response:{response}')
         pass
 
-
-
-class MainWindows(QMainWindow, Ui_MainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setupUi(self)
-        self.modbus_client = CANoeBenchModbus(port='com6')
-        self.connect_signal()
-        self.modbus_connected = False
-
-    def connect_signal(self):
-        self.pushButton_fdxConnect.clicked.connect(self.toggle_modbus_read)
-        self.pushButton_StartCANoe.clicked.connect(self.write_modbus)
-        self.pushButton_StopCANoe.clicked.connect(self.write_modbus1)
-
-    def write_modbus(self):
-        if self.modbus_connected:
-            # self.modbus_client.write_register(address=0, value=0)
-            self.modbus_client.add_write_register_queue(address=0,value=0)
-    def write_modbus1(self):
-        if self.modbus_connected:
-            # self.modbus_client.write_register(address=0,value=1)
-            self.modbus_client.add_write_register_queue(address=0,value=1)
-
-    @pyqtSlot()
-    def toggle_modbus_read(self):
-        """连接/断开 Modbus 客户端并开始/停止读取"""
-        if self.modbus_client.modbus_client == None:
-            if self.modbus_client.create_modbus_rtu_service():
-                pass
-            else:
-                self.modbus_client.stop_cycle_read__loop()
-                self.pushButton_fdxConnect.setText("连接")
-                self.modbus_connected = False
-
-        if not self.modbus_connected:
-            self.modbus_client.start_cycle_read__loop()
-            self.pushButton_fdxConnect.setText("断开")
-            self.modbus_connected = True
-        else:
-            self.modbus_client.stop_cycle_read__loop()
-            self.pushButton_fdxConnect.setText("连接")
-            self.modbus_connected = False
-
-
-
-
-if __name__ == "__main__":
-    QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    app = QApplication(sys.argv)
-    app.setStyle("WindowsVista")
-    w = MainWindows()
-    current_version = "v1.0.0"
-    w.setWindowTitle("tool " + current_version)
-    w.show()
-    sys.exit(app.exec_())
