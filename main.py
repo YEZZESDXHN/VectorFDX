@@ -1,3 +1,4 @@
+import json
 import struct
 import sys
 from typing import Literal
@@ -56,12 +57,47 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.fdx = QVectorFDX(fdx_byte_order='big',local_ip=self.local_ip,local_port=self.local_port,
                                 target_ip=self.target_ip,target_port=self.target_port)
 
+        self.slaves_list = {}
+        self.cycle_read_slaves_list = []
+        self.serial_baud_rate = 115200
+        self.serial_bytesize = 8
+        self.serial_parity = "N"
+        self.serial_stop_bits = 1
+        self.serial_timeout = 1
+        self.serial_retries = 0
+        self.port = 'com6'
+        self._load_modbus_config('config.json')
+        self.modbus_client = QSerialModbusRTUClient(port=self.port,
+                                                    serial_baud_rate=self.serial_baud_rate,
+                                                    serial_bytesize=self.serial_bytesize,
+                                                    serial_parity=self.serial_parity,
+                                                    serial_stop_bits=self.serial_stop_bits,
+                                                    serial_timeout=self.serial_timeout,
+                                                    serial_retries=self.serial_retries)
 
-        self.modbus_client = QSerialModbusRTUClient()
+        self.modbus_client.slaves_list=self.slaves_list
+        self.modbus_client.cycle_read_slaves_list=self.cycle_read_slaves_list
 
         self.connect_ui_signals()
         self.connect_modbus_client_signals()
         self.ui_setdisabled(True)
+
+    def _load_modbus_config(self, config_file):
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+                self.slaves_list = config.get("slaves_list", {})
+                self.cycle_read_slaves_list = config.get("cycle_read_slaves_list", [])
+                self.serial_baud_rate = config.get("serial_baud_rate", self.serial_baud_rate)
+                self.serial_bytesize = config.get("serial_bytesize", self.serial_bytesize)
+                self.serial_parity = config.get("serial_parity", self.serial_parity)
+                self.serial_stop_bits = config.get("serial_stop_bits", self.serial_stop_bits)
+                self.serial_timeout = config.get("serial_timeout", self.serial_timeout)
+                self.serial_retries = config.get("serial_retries", self.serial_retries)
+        except FileNotFoundError:
+            print(f"Error: Config file '{config_file}' not found. Using default values.")
+        except json.JSONDecodeError:
+            print(f"Error: Invalid JSON format in '{config_file}'. Using default values.")
 
     def ui_setdisabled(self, Disabled: bool):
         self.pushButton_StartCANoe.setDisabled(Disabled)

@@ -1,0 +1,18 @@
+{
+    "serial_baud_rate": 115200,
+    "serial_bytesize": 8,
+    "serial_parity": "N",
+    "serial_stop_bits": 1,
+    "serial_timeout": 1,
+    "serial_retries": 1,
+
+    "slaves_list": {
+      "1": 5,
+      "2": 10,
+      "3": 10
+    },
+    "cycle_read_slaves_list" : [1,2]
+    
+
+  }
+  

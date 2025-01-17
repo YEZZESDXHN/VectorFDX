@@ -1,3 +1,4 @@
+import json
 import threading
 from threading import Event
 from queue import Queue
@@ -43,6 +44,7 @@ class SerialModbusRTUClient(object):
                  serial_parity="N",
                  serial_stop_bits: int = 1,
                  serial_timeout: int = 1,
+                 serial_retries: int = 0,
                  queue_maxsize: int = 20,  # 新增队列最大值参数
                  ):
         super().__init__()
@@ -55,7 +57,7 @@ class SerialModbusRTUClient(object):
         self.serial_parity = serial_parity
         self.serial_stop_bits = serial_stop_bits
         self.serial_timeout = serial_timeout
-        self.retries = 0
+        self.retries = serial_retries
 
         self.is_connected = False
         self.modbus_cycle_thread = None
@@ -76,11 +78,11 @@ class SerialModbusRTUClient(object):
         }
 
         self.slaves_list = {
-            1: 10,
+            1: 3,
             2: 10,
             3: 10,
         }
-        self.cycle_read_slaves_list = [1,2,3]
+        self.cycle_read_slaves_list = [1]
         self.offline_slaves_list = []
 
         self.modbus_request_handlers = {
@@ -101,6 +103,8 @@ class SerialModbusRTUClient(object):
             self.modbus_single_thread.start()
 
     def create_modbus_rtu_service(self):
+        print(self.slaves_list)
+        print(self.cycle_read_slaves_list)
         if not self.is_connected:
             try:
                 self.modbus_client = ModbusSerialClient(
