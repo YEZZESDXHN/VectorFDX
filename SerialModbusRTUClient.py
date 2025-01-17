@@ -103,8 +103,6 @@ class SerialModbusRTUClient(object):
             self.modbus_single_thread.start()
 
     def create_modbus_rtu_service(self):
-        print(self.slaves_list)
-        print(self.cycle_read_slaves_list)
         if not self.is_connected:
             try:
                 self.modbus_client = ModbusSerialClient(

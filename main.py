@@ -3,6 +3,8 @@ import struct
 import sys
 from typing import Literal
 
+import serial.tools.list_ports
+
 from PyQt5.QtCore import QCoreApplication, Qt, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMainWindow, QApplication
 
@@ -57,7 +59,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.fdx = QVectorFDX(fdx_byte_order='big',local_ip=self.local_ip,local_port=self.local_port,
                                 target_ip=self.target_ip,target_port=self.target_port)
 
-        self.slaves_list = {}
+        self.slaves_lists = {}
         self.cycle_read_slaves_list = []
         self.serial_baud_rate = 115200
         self.serial_bytesize = 8
@@ -66,7 +68,9 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.serial_timeout = 1
         self.serial_retries = 0
         self.port = 'com6'
+        self.ports_list=[]
         self._load_modbus_config('config.json')
+        self.get_available_ports()
         self.modbus_client = QSerialModbusRTUClient(port=self.port,
                                                     serial_baud_rate=self.serial_baud_rate,
                                                     serial_bytesize=self.serial_bytesize,
@@ -75,7 +79,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
                                                     serial_timeout=self.serial_timeout,
                                                     serial_retries=self.serial_retries)
 
-        self.modbus_client.slaves_list=self.slaves_list
+        self.modbus_client.slaves_list=self.slaves_lists
         self.modbus_client.cycle_read_slaves_list=self.cycle_read_slaves_list
 
         self.connect_ui_signals()
@@ -86,7 +90,10 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         try:
             with open(config_file, 'r') as f:
                 config = json.load(f)
-                self.slaves_list = config.get("slaves_list", {})
+                lists = config.get("slaves_list", {})
+                self.slaves_lists = {int(k): v for k, v in lists.items()}
+                print(lists)
+                print(self.slaves_lists)
                 self.cycle_read_slaves_list = config.get("cycle_read_slaves_list", [])
                 self.serial_baud_rate = config.get("serial_baud_rate", self.serial_baud_rate)
                 self.serial_bytesize = config.get("serial_bytesize", self.serial_bytesize)
@@ -99,10 +106,20 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         except json.JSONDecodeError:
             print(f"Error: Invalid JSON format in '{config_file}'. Using default values.")
 
+    def get_available_ports(self):
+        self.ports_list = [port.device for port in serial.tools.list_ports.comports()]
+        self.comboBox_serialPorts.clear()
+        for port in self.ports_list:
+            self.comboBox_serialPorts.addItem(port)
+
     def ui_setdisabled(self, Disabled: bool):
         self.pushButton_StartCANoe.setDisabled(Disabled)
         self.pushButton_StopCANoe.setDisabled(Disabled)
         self.pushButton_StatusRequest.setDisabled(Disabled)
+        self.comboBox_serialPorts.currentIndexChanged.connect(self.on_port_selected)
+
+    def on_port_selected(self,index):
+        self.port=self.ports_list[index]
 
     def connect_ui_signals(self):
         self.pushButton_StartCANoe.clicked.connect(self.start_canoe_command)
