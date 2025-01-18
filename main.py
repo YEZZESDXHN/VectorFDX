@@ -71,6 +71,10 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.ports_list=[]
         self._load_modbus_config('config.json')
         self.get_available_ports()
+        try:
+            self.port = self.ports_list[0]
+        except:
+            pass
         self.modbus_client = QSerialModbusRTUClient(port=self.port,
                                                     serial_baud_rate=self.serial_baud_rate,
                                                     serial_bytesize=self.serial_bytesize,
@@ -117,7 +121,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.comboBox_serialPorts.currentIndexChanged.connect(self.on_port_selected)
 
     def on_port_selected(self,index):
-        self.port=self.ports_list[index]
+        self.modbus_client.port=self.ports_list[index]
 
     def connect_ui_signals(self):
         self.pushButton_StartCANoe.clicked.connect(self.start_canoe_command)
