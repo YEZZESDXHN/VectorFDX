@@ -1,4 +1,3 @@
-import json
 import threading
 from threading import Event
 from queue import Queue
@@ -313,6 +312,7 @@ class SerialModbusRTUClient(object):
         """关闭 modbus_client"""
         if self.modbus_client and self.modbus_client.connected:
             self.modbus_client.close()
+            self.modbus_client = None
             self.is_connected = False
 
     def response_handle_command(self, slave, code, response):

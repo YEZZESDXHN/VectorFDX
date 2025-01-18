@@ -92,8 +92,6 @@ class MainWindows(QMainWindow, Ui_MainWindow):
                 config = json.load(f)
                 lists = config.get("slaves_list", {})
                 self.slaves_lists = {int(k): v for k, v in lists.items()}
-                print(lists)
-                print(self.slaves_lists)
                 self.cycle_read_slaves_list = config.get("cycle_read_slaves_list", [])
                 self.serial_baud_rate = config.get("serial_baud_rate", self.serial_baud_rate)
                 self.serial_bytesize = config.get("serial_bytesize", self.serial_bytesize)
