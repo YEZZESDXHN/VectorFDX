@@ -1,8 +1,10 @@
 import threading
 from threading import Event
 from queue import Queue
+from typing import Optional
 
-from pymodbus.client import ModbusSerialClient
+from pymodbus import FramerType
+from pymodbus.client import ModbusSerialClient, AsyncModbusUdpClient
 from pymodbus.exceptions import ModbusException, ModbusIOException
 
 
@@ -353,3 +355,57 @@ class SerialModbusRTUClient(object):
         # print(f'# handler_write_register_response:{response}')
         pass
 
+class UdpModbusClient(object):
+    CodeReadCoils = 0x01
+    CodeReadDiscreteInputs = 0x02
+    CodeReadHoldingRegisters = 0x03
+    CodeReadInputRegisters = 0x04
+    CodeWriteSingleCoil = 0x05
+    CodeWriteRegister = 0x06
+    CodeReadExceptionStatus = 0x07
+    CodeWriteRegisters = 0x10
+
+
+
+    def __init__(self,
+                 host: str,
+                 framer: FramerType = FramerType.SOCKET,
+                 port: int = 502,
+                 name: str = 'comm',
+                 source_address=None,
+                 reconnect_delay: float = 0.1,
+                 reconnect_delay_max: float = 300,
+                 timeout: float = 3,
+                 retries: int = 3
+                 ):
+        super().__init__()
+        self.host = host
+        self.framer = framer
+        self.port = port
+        self.name = name
+        self.source_address: Optional[tuple[str, int]] = None,
+        self.reconnect_delay = reconnect_delay
+        self.reconnect_delay_max = reconnect_delay_max
+        self.timeout = timeout
+        self.retries = retries
+
+        self.modbus_client = None,
+
+        self.slaves_list = {
+            1: 3,
+            2: 10,
+            3: 10,
+        }
+        self.cycle_read_slaves_list = [1]
+        self.offline_slaves_list = []
+
+    def create_modbus_service(self):
+        self.modbus_client=AsyncModbusUdpClient(host=self.host,
+                                                framer=self.framer,
+                                                port=self.port,
+                                                name=self.name,
+                                                source_address=self.source_address,
+                                                reconnect_delay=self.reconnect_delay,
+                                                reconnect_delay_max=self.reconnect_delay_max,
+                                                timeout=self.timeout,
+                                                retries=self.retries)

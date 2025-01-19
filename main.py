@@ -9,7 +9,7 @@ from PyQt5.QtCore import QCoreApplication, Qt, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMainWindow, QApplication
 
 from VectorFDX import VectorFDX
-from SerialModbusRTUClient import SerialModbusRTUClient
+from ModbusClient import SerialModbusRTUClient
 from VectoeFDX_UI import Ui_MainWindow
 
 
