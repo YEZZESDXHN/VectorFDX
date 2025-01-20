@@ -80,7 +80,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.serial_retries = 0
         self.port = 'com6'
         self.ports_list=[]
-        self._load_modbus_config('config.json')
+        self._load_modbus_config('./Config/config.json')
         self.get_available_ports()
         try:
             self.port = self.ports_list[0]
@@ -281,8 +281,8 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("WindowsVista")
     w = MainWindows()
-    current_version = "v1.0.0"
-    w.setWindowTitle("CAN tool " + current_version)
+    current_version = "v0.0.6"
+    w.setWindowTitle("CANoe tool " + current_version)
 
     w.show()
     sys.exit(app.exec_())
