@@ -14,16 +14,24 @@ from VectoeFDX_UI import Ui_MainWindow
 
 
 class QVectorFDX(VectorFDX, QObject):
+    write_register_signal = pyqtSignal(object)
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
-        parent_result = super().handle_status_command(command_data, addr, byteorder)
-        # print(parent_result)
+        VectorFDX.__init__(self, *args, **kwargs)
+        QObject.__init__(self)
+    # def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+    #     parent_result = super().handle_status_command(command_data, addr, byteorder)
+    #     # print(parent_result)
+
+    def handle_data_exchange_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+        parent_result = super().handle_data_exchange_command(command_data, addr, byteorder)
+        self.write_register_signal.emit([parent_result,byteorder])
+
 
 class QSerialModbusRTUClient(SerialModbusRTUClient, QObject):
     read_holding_registers_response_data = pyqtSignal(dict)
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        SerialModbusRTUClient.__init__(self, *args, **kwargs)
+        QObject.__init__(self)
 
     def handler_read_holding_registers_response(self, slave, response):
         try:
@@ -61,6 +69,9 @@ class MainWindows(QMainWindow, Ui_MainWindow):
 
         self.slaves_lists = {}
         self.cycle_read_slaves_list = []
+        self.last_write_register_by_fdx_command = {'slave': None, 'address': None, 'value': None}
+        self.write_register_command_fdx_group_id = 2
+        self.write_registers_command_fdx_group_id = 3
         self.serial_baud_rate = 115200
         self.serial_bytesize = 8
         self.serial_parity = "N"
@@ -87,6 +98,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.modbus_client.cycle_read_slaves_list=self.cycle_read_slaves_list
 
         self.connect_ui_signals()
+        self.connect_fdx_client_signals()
         self.connect_modbus_client_signals()
         self.ui_setdisabled(True)
 
@@ -130,13 +142,36 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.pushButton_StatusRequest.clicked.connect(self.status_request_command)
         self.pushButton_connectmodbus.clicked.connect(self.operate_modbus_connection)
         self.checkBox_isCycleReadModbus.clicked.connect(self.start_stop_read_modbus_cycle)
-        self.pushButton_WriteRegister.clicked.connect(self.write_modbus_register)
+        self.pushButton_WriteRegister.clicked.connect(self.write_modbus_register_by_ui)
 
-    def write_modbus_register(self):
+    def write_modbus_register_by_ui(self):
         slave=int(self.lineEdit_WriteSlave.text())
         address=int(self.lineEdit_WriteRegisterAddress.text())
         value=int(self.lineEdit_WriteRegisterValue.text())
         self.modbus_client.add_write_register_queue(address=address,value=value,slave=slave)
+
+    def write_register_by_fdx_command(self, params):
+        group_id=params[0]['groupid']
+        datasize=params[0]['datasize']
+        if group_id == self.write_register_command_fdx_group_id:
+            if params[1] == 'big':
+                slave, address, value = struct.unpack(f'>HHH', params[0]['databytes'][:datasize])
+            else:
+                slave, address, value = struct.unpack(f'<HHH', params[0]['databytes'][:datasize])
+            if self.last_write_register_by_fdx_command['slave'] == slave and \
+                    self.last_write_register_by_fdx_command['address'] == address and \
+                    self.last_write_register_by_fdx_command['value'] == value:
+                pass
+            else:
+                self.modbus_client.add_write_register_queue(address=address, value=value, slave=slave)
+                self.last_write_register_by_fdx_command['slave'] = slave
+                self.last_write_register_by_fdx_command['address'] = address
+                self.last_write_register_by_fdx_command['value'] = value
+
+
+
+
+
 
     def start_stop_read_modbus_cycle(self,checked):
         if checked:
@@ -166,6 +201,9 @@ class MainWindows(QMainWindow, Ui_MainWindow):
     def connect_modbus_client_signals(self):
         self.modbus_client.read_holding_registers_response_data.connect(self.modbus_registers_to_fdx)
 
+    def connect_fdx_client_signals(self):
+        self.fdx.write_register_signal.connect(self.write_register_by_fdx_command)
+
     def modbus_registers_to_fdx(self, data):
         self.fdx.data_exchange_command(data['slave'], list_to_bytes_struct_direct(data['data'], 'big'))
         self.fdx.send_fdx_data()
@@ -188,9 +226,17 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         if self.pushButton_fdxConnect.text() == 'Connect':
             self.connect_fdx()
             self.ui_setdisabled(False)
+            self.fdx.free_running_request_command(self.write_register_command_fdx_group_id,
+                                                  self.fdx.FreeRunningFlag_TransmitCyclic,
+                                                  5*1000*1000,
+                                                  5*1000*1000)
+            self.fdx.send_fdx_data()
         elif self.pushButton_fdxConnect.text() == 'Connected':
             self.disconnect_fdx()
             self.ui_setdisabled(True)
+            self.fdx.free_running_cancel_command(self.write_register_command_fdx_group_id)
+            self.fdx.send_fdx_data()
+
 
 
     def connect_fdx(self):

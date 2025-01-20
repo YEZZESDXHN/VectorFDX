@@ -32,6 +32,13 @@ class VectorFDX(object):
     MeasurementState_Running = 3
     MeasurementState_Stop = 4
 
+    # Free Running Flags
+    FreeRunningFlag_TransmitAtPreStart = 1
+    FreeRunningFlag_TransmitAtStop = 2
+    FreeRunningFlag_TransmitCyclic = 4
+    FreeRunningFlag_TransmitAtTrigger = 8
+
+
     def __init__(self, fdx_major_version: int = 2, fdx_minor_version: int = 1,
                  fdx_byte_order: Literal["little", "big"] = 'big',
                  local_ip='127.0.0.1', local_port: int = 2000,
@@ -207,9 +214,11 @@ class VectorFDX(object):
         """处理数据交换命令"""
         ret = {'remote_addr': addr}
         if byteorder == 'big':
-            groupid, datasize, databytes = struct.unpack(f'>HH8p', command_data)
+            groupid, datasize = struct.unpack(f'>HH', command_data[:4])
+            databytes = command_data[4:]
         else:
-            groupid, datasize, databytes = struct.unpack(f'<HH8p', command_data)
+            groupid, datasize = struct.unpack(f'<HH', command_data[:4])
+            databytes = command_data[4:]
 
         ret['groupid'] = groupid
         ret['datasize'] = datasize
@@ -405,6 +414,42 @@ class VectorFDX(object):
         else:
             self.fdx_data = self.build_fdx_header() + command
         # print(f"data_exchange_command: {self.fdx_data.hex(' ').upper()}")
+
+    def free_running_request_command(self, group_id: int, flags: int, cycle_time: int, first_duration: int, is_add_command: bool = False):
+        """创建并添加状态命令"""
+        if not isinstance(group_id, int):
+            raise TypeError("group_id must be an integer")
+        if not isinstance(flags, int):
+            raise TypeError("flags must be an integer")
+        if not isinstance(cycle_time, int):
+            raise TypeError("cycle_time must be an integer")
+        if not isinstance(first_duration, int):
+            raise TypeError("first_duration must be an integer")
+        group_id_bytes = group_id.to_bytes(2, self.fdx_byte_order)
+        flags_bytes = flags.to_bytes(2, self.fdx_byte_order)
+        cycle_time_bytes = cycle_time.to_bytes(4, self.fdx_byte_order)
+        first_duration_bytes = first_duration.to_bytes(4, self.fdx_byte_order)
+
+        command = self._create_command(self.COMMAND_CODE_FREE_RUNNING_REQUEST,group_id_bytes+flags_bytes+cycle_time_bytes+first_duration_bytes)
+        if is_add_command:
+            self._add_command(command)
+        else:
+            self.fdx_data = self.build_fdx_header() + command
+        # print(f"free_running_request_command: {self.fdx_data.hex(' ').upper()}")
+
+    def free_running_cancel_command(self, group_id: int, is_add_command: bool = False):
+        """创建并添加状态命令"""
+        if not isinstance(group_id, int):
+            raise TypeError("group_id must be an integer")
+
+        group_id_bytes = group_id.to_bytes(2, self.fdx_byte_order)
+
+        command = self._create_command(self.COMMAND_CODE_FREE_RUNNING_CANCEL,group_id_bytes)
+        if is_add_command:
+            self._add_command(command)
+        else:
+            self.fdx_data = self.build_fdx_header() + command
+        # print(f"free_running_cancel_command: {self.fdx_data.hex(' ').upper()}")
 
     def status_command(self, is_add_command: bool = False):
         """创建并添加状态命令"""

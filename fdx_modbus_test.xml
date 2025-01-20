@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<canoefdxdescription version="1.0">
+  <datagroup groupID="1" size="6">
+    <identifier>Group 1</identifier>
+    <item offset="0" size="2" type="uint16">
+      <sysvar name="Slave1[0]" namespace="Modbus_t::read" value="raw" />
+    </item>
+    <item offset="2" size="2" type="uint16">
+      <sysvar name="Slave1[1]" namespace="Modbus_t::read" value="raw" />
+    </item>
+    <item offset="4" size="2" type="uint16">
+      <sysvar name="Slave1[2]" namespace="Modbus_t::read" value="raw" />
+    </item>
+  </datagroup>
+  <datagroup groupID="2" size="6">
+    <identifier>Group 2</identifier>
+    <item offset="0" size="2" type="uint16">
+      <sysvar name="write_register_slave" namespace="Modbus_t::write::write_register" value="raw" />
+    </item>
+    <item offset="2" size="2" type="uint16">
+      <sysvar name="write_register_address" namespace="Modbus_t::write::write_register" value="raw" />
+    </item>
+    <item offset="4" size="2" type="uint16">
+      <sysvar name="value" namespace="Modbus_t::write::write_register" value="raw" />
+    </item>
+  </datagroup>
+  <datagroup groupID="3" size="10">
+    <identifier>Group 3</identifier>
+    <item offset="0" size="2" type="uint16">
+      <sysvar name="write_slave" namespace="Modbus_t::write::write_registers" value="raw" />
+    </item>
+    <item offset="2" size="2" type="uint16">
+      <sysvar name="write_address" namespace="Modbus_t::write::write_registers" value="raw" />
+    </item>
+    <item offset="4" size="2" type="uint16">
+      <identifier></identifier>
+      <sysvar name="write_num" namespace="Modbus_t::write::write_registers" value="raw" />
+    </item>
+    <item offset="6" size="2" type="uint16">
+      <sysvar name="write_data[1]" namespace="Modbus_t::write::write_registers" value="raw" />
+    </item>
+    <item offset="8" size="2" type="uint16">
+      <sysvar name="write_num" namespace="Modbus_t::write::write_registers" value="raw" />
+    </item>
+  </datagroup>
+</canoefdxdescription>

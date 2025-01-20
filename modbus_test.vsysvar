@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<systemvariables version="4">
+  <namespace name="" comment="" interface="">
+    <namespace name="Modbus_t" comment="" interface="">
+      <namespace name="read" comment="" interface="">
+        <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="Slave1" comment="" bitcount="32" isSigned="true" encoding="65001" type="intarray" arrayLength="3" />
+      </namespace>
+      <namespace name="write" comment="" interface="">
+        <namespace name="write_register" comment="" interface="">
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="value" comment="" bitcount="32" isSigned="false" encoding="65001" type="int" />
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="write_register_address" comment="" bitcount="32" isSigned="false" encoding="65001" type="int" />
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="write_register_slave" comment="" bitcount="32" isSigned="false" encoding="65001" type="int" />
+        </namespace>
+        <namespace name="write_registers" comment="" interface="">
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="write_address" comment="" bitcount="32" isSigned="false" encoding="65001" type="int" />
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="write_data" comment="" bitcount="32" isSigned="true" encoding="65001" type="intarray" arrayLength="128" />
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="write_num" comment="" bitcount="32" isSigned="false" encoding="65001" type="int" />
+          <variable anlyzLocal="2" readOnly="false" valueSequence="false" unit="" name="write_slave" comment="" bitcount="32" isSigned="false" encoding="65001" type="int" />
+        </namespace>
+      </namespace>
+    </namespace>
+  </namespace>
+</systemvariables>
