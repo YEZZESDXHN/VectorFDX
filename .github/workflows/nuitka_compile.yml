@@ -54,7 +54,7 @@ jobs:
           --standalone --show-progress --show-memory --remove-output --follow-imports --lto=yes --windows-disable-console 
           --include-data-files="C:/hostedtoolcache/windows/Python/3.9.13/x64/lib/site-packages/PyQt5/Qt5/plugins/platforms/qwindows.dll=platforms/qwindows.dll" 
           --include-data-files="C:/hostedtoolcache/windows/Python/3.9.13/x64/lib/site-packages/PyQt5/Qt5/plugins/styles/qwindowsvistastyle.dll=styles/qwindowsvistastyle.dll" 
-          --include-data-files="${{ github.workspace }}/Config/config.json=Configconfig.json" 
+          --include-data-files="${{ github.workspace }}/Config/config.json=Config/config.json" 
           --include-data-files="${{ github.workspace }}/FDX Files/modbus_FDX_description.xml=FDX Files/modbus_FDX_description.xml" 
           --include-data-files="${{ github.workspace }}/FDX Files/modbus_sysvar.vsysvar=FDX Files/modbus_sysvar.vsysvar" 
           --output-dir="${{ github.workspace }}/dist" 
