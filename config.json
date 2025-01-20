@@ -11,8 +11,11 @@
       "2": 10,
       "3": 10
     },
-    "cycle_read_slaves_list" : [1]
+    "cycle_read_slaves_list" : [1],
     
+    "write_register_command_fdx_group_id": 250,
+    "write_registers_command_fdx_group_id": 251,
+    "read_registers_command_fdx_group_id": 252
 
 }
   

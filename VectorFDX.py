@@ -87,10 +87,13 @@ class VectorFDX(object):
 
     def create_udp_socket(self):
         """创建 UDP 套接字并绑定到本地地址，设置为非阻塞模式"""
-        self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        local_address = (self.local_ip, self.local_port)
-        self.udp_socket.bind(local_address)
-        self.udp_socket.settimeout(1)
+        try:
+            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            local_address = (self.local_ip, self.local_port)
+            self.udp_socket.bind(local_address)
+            self.udp_socket.settimeout(1)
+        except:
+            self.udp_socket = None
 
     def start_receiving(self):
         """启动接收线程"""
@@ -471,6 +474,8 @@ class VectorFDX(object):
 
     def send_fdx_data(self):
         """发送 FDX 数据"""
+        if self.udp_socket is None:
+            return
         # print(f"send:{self.fdx_data.hex(' ')}")
         if not self.fdx_data:
             print("No FDX data to send.")
