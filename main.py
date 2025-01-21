@@ -70,9 +70,9 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.slaves_lists = {}
         self.cycle_read_slaves_list = []
         self.last_write_register_by_fdx_command = {'slave': None, 'address': None, 'value': None}
-        self.write_register_command_fdx_group_id = 2
+        self.write_register_command_fdx_group_id = None
         self.last_write_registers_by_fdx_command = {'slave': None, 'address': None, 'register_num': None, 'values': None}
-        self.write_registers_command_fdx_group_id = 3
+        self.write_registers_command_fdx_group_id = None
         self.serial_baud_rate = 115200
         self.serial_bytesize = 8
         self.serial_parity = "N"
@@ -116,6 +116,9 @@ class MainWindows(QMainWindow, Ui_MainWindow):
                 self.serial_stop_bits = config.get("serial_stop_bits", self.serial_stop_bits)
                 self.serial_timeout = config.get("serial_timeout", self.serial_timeout)
                 self.serial_retries = config.get("serial_retries", self.serial_retries)
+
+                self.write_register_command_fdx_group_id = config.get("write_register_command_fdx_group_id", None)
+                self.write_registers_command_fdx_group_id = config.get("write_registers_command_fdx_group_id", None)
         except FileNotFoundError:
             print(f"Error: Config file '{config_file}' not found. Using default values.")
         except json.JSONDecodeError:
@@ -154,7 +157,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
     def write_register_by_fdx_command(self, params):
         group_id=params[0]['groupid']
         datasize=params[0]['datasize']
-        if group_id == self.write_register_command_fdx_group_id:
+        if self.write_register_command_fdx_group_id is not None and group_id == self.write_register_command_fdx_group_id:
             if params[1] == 'big':
                 slave, address, value = struct.unpack(f'>HHH', params[0]['databytes'][:datasize])
             else:
@@ -173,7 +176,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         group_id=params[0]['groupid']
         datasize=params[0]['datasize']
 
-        if group_id == self.write_registers_command_fdx_group_id:
+        if self.write_registers_command_fdx_group_id is not None and group_id == self.write_registers_command_fdx_group_id:
             if params[1] == 'big':
                 slave, address, register_num = struct.unpack(f'>HHH', params[0]['databytes'][:6])
                 if datasize < register_num*2+6:

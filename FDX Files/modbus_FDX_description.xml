@@ -12,8 +12,8 @@
       <sysvar name="Slave1[2]" namespace="Modbus_t::read" value="raw" />
     </item>
   </datagroup>
-  <datagroup groupID="2" size="6">
-    <identifier>Group 2</identifier>
+  <datagroup groupID="250" size="6">
+    <identifier>write_register_command_fdx_group</identifier>
     <item offset="0" size="2" type="uint16">
       <sysvar name="write_register_slave" namespace="Modbus_t::write::write_register" value="raw" />
     </item>
@@ -24,8 +24,8 @@
       <sysvar name="value" namespace="Modbus_t::write::write_register" value="raw" />
     </item>
   </datagroup>
-  <datagroup groupID="3" size="10">
-    <identifier>Group 3</identifier>
+  <datagroup groupID="251" size="12">
+    <identifier>write_registers_command_fdx_group</identifier>
     <item offset="0" size="2" type="uint16">
       <sysvar name="write_slave" namespace="Modbus_t::write::write_registers" value="raw" />
     </item>
@@ -37,10 +37,15 @@
       <sysvar name="write_num" namespace="Modbus_t::write::write_registers" value="raw" />
     </item>
     <item offset="6" size="2" type="uint16">
-      <sysvar name="write_data[1]" namespace="Modbus_t::write::write_registers" value="raw" />
+      <identifier></identifier>
+      <sysvar name="write_data[0]" namespace="Modbus_t::write::write_registers" value="raw" />
     </item>
     <item offset="8" size="2" type="uint16">
-      <sysvar name="write_num" namespace="Modbus_t::write::write_registers" value="raw" />
+      <identifier></identifier>
+      <sysvar name="write_data[1]" namespace="Modbus_t::write::write_registers" value="raw" />
+    </item>
+    <item offset="10" size="2" type="uint16">
+      <sysvar name="write_data[2]" namespace="Modbus_t::write::write_registers" value="raw" />
     </item>
   </datagroup>
 </canoefdxdescription>
