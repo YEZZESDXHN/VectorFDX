@@ -71,6 +71,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.cycle_read_slaves_list = []
         self.last_write_register_by_fdx_command = {'slave': None, 'address': None, 'value': None}
         self.write_register_command_fdx_group_id = 2
+        self.last_write_registers_by_fdx_command = {'slave': None, 'address': None, 'register_num': None, 'values': None}
         self.write_registers_command_fdx_group_id = 3
         self.serial_baud_rate = 115200
         self.serial_bytesize = 8
@@ -168,6 +169,40 @@ class MainWindows(QMainWindow, Ui_MainWindow):
                 self.last_write_register_by_fdx_command['address'] = address
                 self.last_write_register_by_fdx_command['value'] = value
 
+    def write_registers_by_fdx_command(self, params):
+        group_id=params[0]['groupid']
+        datasize=params[0]['datasize']
+
+        if group_id == self.write_registers_command_fdx_group_id:
+            if params[1] == 'big':
+                slave, address, register_num = struct.unpack(f'>HHH', params[0]['databytes'][:6])
+                if datasize < register_num*2+6:
+                    return
+                data = params[0]['databytes'][6:register_num*2+6]
+                values = struct.unpack(f'>{register_num}H', data)
+                values = list(values)
+
+            else:
+                slave, address, register_num = struct.unpack(f'<HHH', params[0]['databytes'][:6])
+                if datasize < register_num*2+6:
+                    return
+                data = params[0]['databytes'][6:register_num * 2 + 6]
+                values = struct.unpack(f'<{register_num}H', data)
+                values = list(values)
+
+
+            if self.last_write_registers_by_fdx_command['slave'] == slave and \
+                    self.last_write_registers_by_fdx_command['address'] == address and \
+                    self.last_write_registers_by_fdx_command['register_num'] == register_num and \
+                    self.last_write_registers_by_fdx_command['values'] == values:
+                pass
+            else:
+                self.modbus_client.add_write_registers_queue(address=address, values=values, slave=slave)
+                self.last_write_registers_by_fdx_command['slave'] = slave
+                self.last_write_registers_by_fdx_command['address'] = address
+                self.last_write_registers_by_fdx_command['register_num'] = register_num
+                self.last_write_registers_by_fdx_command['values'] = values
+
 
 
 
@@ -203,6 +238,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
 
     def connect_fdx_client_signals(self):
         self.fdx.write_register_signal.connect(self.write_register_by_fdx_command)
+        self.fdx.write_register_signal.connect(self.write_registers_by_fdx_command)
 
     def modbus_registers_to_fdx(self, data):
         self.fdx.data_exchange_command(data['slave'], list_to_bytes_struct_direct(data['data'], 'big'))
@@ -230,11 +266,17 @@ class MainWindows(QMainWindow, Ui_MainWindow):
                                                   self.fdx.FreeRunningFlag_TransmitCyclic,
                                                   5*1000*1000,
                                                   5*1000*1000)
+            self.fdx.free_running_request_command(self.write_registers_command_fdx_group_id,
+                                                  self.fdx.FreeRunningFlag_TransmitCyclic,
+                                                  5 * 1000 * 1000,
+                                                  5 * 1000 * 1000,
+                                                  is_add_command=True)
             self.fdx.send_fdx_data()
         elif self.pushButton_fdxConnect.text() == 'Connected':
             self.disconnect_fdx()
             self.ui_setdisabled(True)
             self.fdx.free_running_cancel_command(self.write_register_command_fdx_group_id)
+            self.fdx.free_running_cancel_command(self.write_registers_command_fdx_group_id,is_add_command=True)
             self.fdx.send_fdx_data()
 
 
