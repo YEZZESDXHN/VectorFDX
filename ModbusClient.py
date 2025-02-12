@@ -141,6 +141,7 @@ class SerialModbusRTUClient(object):
             self.is_stop_cycle_loop = True
             self.modbus_cycle_thread.join()
 
+    # 处理单个指令，如用户请求的写入读取指令
     def _single__loop(self):
         if self.is_connected:
             while True:
@@ -155,7 +156,7 @@ class SerialModbusRTUClient(object):
                 except Exception as e:
                     print(f"Error during writing: {e}")
 
-
+    # 根据配置文件周期读取多个寄存器
     def _cycle_read__loop(self):
         while True:
             if self.is_stop_cycle_loop:
@@ -165,7 +166,7 @@ class SerialModbusRTUClient(object):
                     for slave in self.cycle_read_slaves_list:
                         count = self.slaves_list.get(slave)
                         if count:
-                            self.read_holding_registers(address=0,count=count,slave=slave)
+                            self._read_holding_registers_for_cycle_loop(address=0,count=count,slave=slave)
                 except ModbusIOException as e:
                     print(f"Modbus IO Error during reading: {e}")
                     self.is_connected = False
@@ -176,7 +177,7 @@ class SerialModbusRTUClient(object):
                 self.modbus_cycle_is_run_event.wait()
 
     def request_handle_command(self, request_parameter:ModbusRequestParameter):
-        """根据response调用相应的处理函数"""
+        """根据request_parameter调用相应的处理函数"""
         handler = self.modbus_request_handlers.get(request_parameter.code)
         if handler:
             params = vars(request_parameter)
@@ -188,8 +189,10 @@ class SerialModbusRTUClient(object):
                        no_response_expected: bool = False,**kwargs):
         """写从站寄存器"""
         try:
+            self.modbus_cycle_is_run_event.clear()
             response = self.modbus_client.write_register(slave=slave, address=address, value=value,
                                                     no_response_expected=no_response_expected)
+            self.modbus_cycle_is_run_event.set()
             if not response.isError():
                 self.response_handle_command(slave, self.CodeWriteRegister,response)
                 # return response.registers
@@ -229,8 +232,10 @@ class SerialModbusRTUClient(object):
                        no_response_expected: bool = False,**kwargs):
         """写从站寄存器"""
         try:
+            self.modbus_cycle_is_run_event.clear()
             response = self.modbus_client.write_registers(slave=slave, address=address, values=values,
                                                     no_response_expected=no_response_expected)
+            self.modbus_cycle_is_run_event.set()
             if not response.isError():
                 self.response_handle_command(slave, self.CodeWriteRegister,response)
                 # return response.registers
@@ -281,13 +286,28 @@ class SerialModbusRTUClient(object):
                 return None
         except:
             return None
-
-    def _read_holding_registers(self, address: int, count: int, *, slave: int = 1,
+    def _read_holding_registers_for_cycle_loop(self, address: int, count: int, *, slave: int = 1,
                                no_response_expected: bool = False,**kwargs):
         """读从站寄存器"""
         try:
             response = self.modbus_client.read_holding_registers(slave=slave, address=address, count=count,
                                                             no_response_expected=no_response_expected)
+            if not response.isError():
+                self.response_handle_command(slave, self.CodeReadHoldingRegisters,response)
+                # return response.registers
+            else:
+                return None
+        except:
+            return None
+
+    def _read_holding_registers(self, address: int, count: int, *, slave: int = 1,
+                               no_response_expected: bool = False,**kwargs):
+        """读从站寄存器"""
+        try:
+            self.modbus_cycle_is_run_event.clear()
+            response = self.modbus_client.read_holding_registers(slave=slave, address=address, count=count,
+                                                            no_response_expected=no_response_expected)
+            self.modbus_cycle_is_run_event.clear()
             if not response.isError():
                 self.response_handle_command(slave, self.CodeReadHoldingRegisters,response)
                 # return response.registers
@@ -313,7 +333,10 @@ class SerialModbusRTUClient(object):
     def modbus_rtu_service_close(self):
         """关闭 modbus_client"""
         if self.modbus_client and self.modbus_client.connected:
-            self.modbus_client.close()
+            try:
+                self.modbus_client.close()
+            except:
+                pass
             self.modbus_client = None
             self.is_connected = False
 

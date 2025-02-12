@@ -6,7 +6,7 @@ from typing import Literal
 import serial.tools.list_ports
 
 from PyQt5.QtCore import QCoreApplication, Qt, pyqtSignal, QObject
-from PyQt5.QtWidgets import QMainWindow, QApplication
+from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 
 from VectorFDX import VectorFDX
 from ModbusClient import SerialModbusRTUClient
@@ -15,12 +15,14 @@ from VectoeFDX_UI import Ui_MainWindow
 
 class QVectorFDX(VectorFDX, QObject):
     write_register_signal = pyqtSignal(object)
+    canoe_status = pyqtSignal(object)
     def __init__(self, *args, **kwargs):
         VectorFDX.__init__(self, *args, **kwargs)
         QObject.__init__(self)
     # def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
     #     parent_result = super().handle_status_command(command_data, addr, byteorder)
-    #     # print(parent_result)
+    #     self.canoe_status.emit(parent_result)
+        # print(parent_result)
 
     def handle_data_exchange_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
         parent_result = super().handle_data_exchange_command(command_data, addr, byteorder)
@@ -242,6 +244,12 @@ class MainWindows(QMainWindow, Ui_MainWindow):
     def connect_fdx_client_signals(self):
         self.fdx.write_register_signal.connect(self.write_register_by_fdx_command)
         self.fdx.write_register_signal.connect(self.write_registers_by_fdx_command)
+        # self.fdx.canoe_status.connect(self.canoe_status_ui)
+
+    # def canoe_status_ui(self, status):
+    #     print(f'canoe_status_ui:{status}')
+    #     MeasurementState=['NotRunning','PreStart','Running','Stop']
+    #     QMessageBox.information(QApplication.activeWindow(), "INFO", f"CANoe is {MeasurementState[status['measurementstate']-1]}\ntimestamps:{status['timestamps']}")
 
     def modbus_registers_to_fdx(self, data):
         self.fdx.data_exchange_command(data['slave'], list_to_bytes_struct_direct(data['data'], 'big'))
