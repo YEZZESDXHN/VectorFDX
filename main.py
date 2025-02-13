@@ -6,6 +6,7 @@ from typing import Literal
 import serial.tools.list_ports
 
 from PyQt5.QtCore import QCoreApplication, Qt, pyqtSignal, QObject
+from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import QMainWindow, QApplication, QMessageBox
 
 from VectorFDX import VectorFDX
@@ -19,9 +20,9 @@ class QVectorFDX(VectorFDX, QObject):
     def __init__(self, *args, **kwargs):
         VectorFDX.__init__(self, *args, **kwargs)
         QObject.__init__(self)
-    # def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
-    #     parent_result = super().handle_status_command(command_data, addr, byteorder)
-    #     self.canoe_status.emit(parent_result)
+    def handle_status_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
+        parent_result = super().handle_status_command(command_data, addr, byteorder)
+        self.canoe_status.emit(parent_result)
         # print(parent_result)
 
     def handle_data_exchange_command(self, command_data: bytes, addr: str, byteorder: Literal["little", "big"]):
@@ -103,7 +104,9 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.connect_ui_signals()
         self.connect_fdx_client_signals()
         self.connect_modbus_client_signals()
-        self.ui_setdisabled(True)
+        self.ui_setdisabled_FDX(True)
+        self.ui_setdisabled_Serial(True)
+        self.is_show_canoe_status = False
 
     def _load_modbus_config(self, config_file):
         try:
@@ -132,11 +135,22 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         for port in self.ports_list:
             self.comboBox_serialPorts.addItem(port)
 
-    def ui_setdisabled(self, Disabled: bool):
+    def ui_setdisabled_FDX(self, Disabled: bool):
         self.pushButton_StartCANoe.setDisabled(Disabled)
         self.pushButton_StopCANoe.setDisabled(Disabled)
         self.pushButton_StatusRequest.setDisabled(Disabled)
-        self.comboBox_serialPorts.currentIndexChanged.connect(self.on_port_selected)
+
+    def ui_setdisabled_Serial(self, Disabled: bool):
+        self.checkBox_isCycleReadModbus.setDisabled(Disabled)
+        self.lineEdit_WriteSlave.setDisabled(Disabled)
+        self.lineEdit_WriteRegisterAddress.setDisabled(Disabled)
+        self.lineEdit_WriteRegisterValue.setDisabled(Disabled)
+        self.pushButton_WriteRegister.setDisabled(Disabled)
+        if Disabled:
+            self.pushButton_UpdatePorts.setDisabled(False)
+        else:
+            self.pushButton_UpdatePorts.setDisabled(True)
+
 
     def on_port_selected(self,index):
         self.modbus_client.port=self.ports_list[index]
@@ -149,6 +163,8 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.pushButton_connectmodbus.clicked.connect(self.operate_modbus_connection)
         self.checkBox_isCycleReadModbus.clicked.connect(self.start_stop_read_modbus_cycle)
         self.pushButton_WriteRegister.clicked.connect(self.write_modbus_register_by_ui)
+        self.pushButton_UpdatePorts.clicked.connect(self.get_available_ports)
+        self.comboBox_serialPorts.currentIndexChanged.connect(self.on_port_selected)
 
     def write_modbus_register_by_ui(self):
         slave=int(self.lineEdit_WriteSlave.text())
@@ -227,8 +243,12 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         """连接/断开 Modbus 客户端并开始/停止读取"""
         if self.modbus_client.modbus_client == None:
             if self.modbus_client.create_modbus_rtu_service():
+                self.print_info(f"* {self.modbus_client.port}连接成功\n")
+                self.ui_setdisabled_Serial(False)
                 self.pushButton_connectmodbus.setText("Connected")
             else:
+                self.ui_setdisabled_Serial(True)
+                self.print_info(f"* {self.modbus_client.port}连接失败\n")
                 self.modbus_client.stop_cycle_read__loop()
                 self.pushButton_connectmodbus.setText("Connect")
 
@@ -236,6 +256,8 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         if self.modbus_client.modbus_client is not None and self.modbus_client.is_connected:
             self.modbus_client.stop_cycle_read__loop()
             self.modbus_client.modbus_rtu_service_close()
+            self.print_info(f"* 串口关闭成功\n")
+            self.ui_setdisabled_Serial(True)
             self.pushButton_connectmodbus.setText("Connect")
 
     def connect_modbus_client_signals(self):
@@ -244,12 +266,13 @@ class MainWindows(QMainWindow, Ui_MainWindow):
     def connect_fdx_client_signals(self):
         self.fdx.write_register_signal.connect(self.write_register_by_fdx_command)
         self.fdx.write_register_signal.connect(self.write_registers_by_fdx_command)
-        # self.fdx.canoe_status.connect(self.canoe_status_ui)
+        self.fdx.canoe_status.connect(self.canoe_status_ui)
 
-    # def canoe_status_ui(self, status):
-    #     print(f'canoe_status_ui:{status}')
-    #     MeasurementState=['NotRunning','PreStart','Running','Stop']
-    #     QMessageBox.information(QApplication.activeWindow(), "INFO", f"CANoe is {MeasurementState[status['measurementstate']-1]}\ntimestamps:{status['timestamps']}")
+    def canoe_status_ui(self, status):
+        if self.is_show_canoe_status:
+            self.is_show_canoe_status = False
+            MeasurementState=['NotRunning','PreStart','Running','Stop']
+            QMessageBox.information(QApplication.activeWindow(), "INFO", f"CANoe is {MeasurementState[status['measurementstate']-1]}\ntimestamps:{status['timestamps']}")
 
     def modbus_registers_to_fdx(self, data):
         self.fdx.data_exchange_command(data['slave'], list_to_bytes_struct_direct(data['data'], 'big'))
@@ -265,6 +288,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.fdx.send_fdx_data()
 
     def status_request_command(self):
+        self.is_show_canoe_status = True
         self.fdx.status_request_command()
         self.fdx.send_fdx_data()
 
@@ -272,7 +296,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
     def operate_fdx_connection(self):
         if self.pushButton_fdxConnect.text() == 'Connect':
             self.connect_fdx()
-            self.ui_setdisabled(False)
+            self.ui_setdisabled_FDX(False)
             self.fdx.free_running_request_command(self.write_register_command_fdx_group_id,
                                                   self.fdx.FreeRunningFlag_TransmitCyclic,
                                                   5*1000*1000,
@@ -285,7 +309,7 @@ class MainWindows(QMainWindow, Ui_MainWindow):
             self.fdx.send_fdx_data()
         elif self.pushButton_fdxConnect.text() == 'Connected':
             self.disconnect_fdx()
-            self.ui_setdisabled(True)
+            self.ui_setdisabled_FDX(True)
             self.fdx.free_running_cancel_command(self.write_register_command_fdx_group_id)
             self.fdx.free_running_cancel_command(self.write_registers_command_fdx_group_id,is_add_command=True)
             self.fdx.send_fdx_data()
@@ -310,6 +334,8 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.lineEdit_targetip.setDisabled(True)
         self.lineEdit_targetport.setDisabled(True)
 
+        self.print_info(f"* FDX连接,点击GetCANoeStatus可获取CANoe状态表示连接成功，否则请检查CANoeFDX设置与本软件端口IP是否正确，如仍然失败可测试更换端口\n")
+
         self.pushButton_fdxConnect.setText('Connected')
 
     def disconnect_fdx(self):
@@ -320,11 +346,18 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.lineEdit_localport.setDisabled(False)
         self.lineEdit_targetip.setDisabled(False)
         self.lineEdit_targetport.setDisabled(False)
-
+        self.print_info(f"* 断开FDX连接\n")
         self.pushButton_fdxConnect.setText('Connect')
 
+    def closeEvent(self, event):
+        self.disconnect_fdx()
+        self.close_modbus_client()
 
+        event.accept()  # 允许关闭窗口
 
+    def print_info(self, info):
+        self.textBrowser_info.insertPlainText(info)
+        self.textBrowser_info.moveCursor(QTextCursor.End)
 
 
 
@@ -334,7 +367,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("WindowsVista")
     w = MainWindows()
-    current_version = "v0.0.6"
+    current_version = "v0.0.9"
     w.setWindowTitle("CANoe tool " + current_version)
 
     w.show()
