@@ -39,10 +39,12 @@ class VectorFDX(object):
     FreeRunningFlag_TransmitAtTrigger = 8
 
 
-    def __init__(self, fdx_major_version: int = 2, fdx_minor_version: int = 1,
+    def __init__(self, UDP_Or_TCP: Literal["UDP", "TCP"] = 'TCP',
+                 fdx_major_version: int = 2, fdx_minor_version: int = 1,
                  fdx_byte_order: Literal["little", "big"] = 'big',
                  local_ip='127.0.0.1', local_port: int = 2000,
                  target_ip='127.0.0.1', target_port: int = 2001):
+        self.UDP_Or_TCP = UDP_Or_TCP
         self.max_len = 0xffe3
         self.fdx_data = b''  # 用于存储 FDX 数据
         self.fdx_signature = b'\x43\x41\x4E\x6F\x65\x46\x44\x58'
@@ -85,20 +87,64 @@ class VectorFDX(object):
             self.COMMAND_CODE_INCREMENT_TIME: self.handle_increment_time,
         }
 
+    def create_socket(self):
+        if self.UDP_Or_TCP == 'UDP':
+            self.create_udp_socket()
+        elif self.UDP_Or_TCP == 'TCP':
+            self.create_tcp_socket()
+        else:
+            print(f"不支持{self.UDP_Or_TCP}协议")
+
     def create_udp_socket(self):
-        """创建 UDP 套接字并绑定到本地地址，设置为非阻塞模式"""
+        """创建 UDP 套接字并绑定到本地地址"""
         try:
-            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            local_address = (self.local_ip, self.local_port)
-            self.udp_socket.bind(local_address)
-            self.udp_socket.settimeout(1)
+            if self.udp_socket is None:
+                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                local_address = (self.local_ip, self.local_port)
+                self.udp_socket.bind(local_address)
+                self.udp_socket.settimeout(1)
+            else:
+                try:
+                    self.close_socket()
+                except Exception as e:
+                    print(e)
         except:
             self.udp_socket = None
+
+    def create_tcp_socket(self):  # 客户端
+        """创建 TCP客户端 套接字并绑定到本地地址"""
+        try:
+            if self.udp_socket is None:
+                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                local_address = (self.local_ip, self.local_port)
+                service_address = (self.target_ip, self.target_port)
+                self.udp_socket.bind(local_address)
+                self.udp_socket.connect(service_address)
+            else:
+                try:
+                    self.close_socket()
+                except Exception as e:
+                    print(e)
+        except OSError as e:
+            if e.errno == 98:  # "Address already in use" error
+                print(f"错误: 端口 {self.local_port} 已经被占用.")
+            else:
+                print(f"error: {e}")
+                self.close_socket()
+
+    # def create_tcp_socket(self):  # 服务端
+    #     """创建 TCP服务端 套接字并绑定到本地地址"""
+    #     self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     local_address = (self.local_ip, self.local_port)
+    #     self.udp_socket.bind(local_address)
+    #     self.udp_socket.listen(1)  # 最大连接数
+    #     conn, addr = self.udp_socket.accept()
+    #     print(f"客户端 {addr} 已连接")
 
     def start_receiving(self):
         """启动接收线程"""
         if not self.udp_socket:
-            self.create_udp_socket()
+            self.create_socket()
         self.is_running = True
         self.receive_thread = threading.Thread(target=self._receive_data_thread, daemon=True)
         self.receive_thread.start()
@@ -112,21 +158,42 @@ class VectorFDX(object):
     def _receive_data_thread(self):
         """接收数据的线程函数"""
         while self.is_running:
-            try:
-                data, addr = self.udp_socket.recvfrom(65535)
-                if not data.startswith(self.fdx_signature):
-                    print("Invalid FDX signature.")
-                else:
-                    self.parse_fdx_data(data, addr)
-                # print(f"Received data from {addr}: {data.hex()}")
-            except socket.timeout:
-                pass
-                # print('socket.timeout')
-            except Exception as e:
-                if self.is_running:  # 仅当 is_running 为 True 时才打印错误
-                    print(f"Error receiving data: {e}")
-                    # 如果套接字被关闭，recvfrom 会抛出异常，正常退出循环
-                break
+            if self.UDP_Or_TCP == "UDP":
+                try:
+                    data, addr = self.udp_socket.recvfrom(65535)
+                    if not data.startswith(self.fdx_signature):
+                        print("Invalid FDX signature.")
+                    else:
+                        self.parse_fdx_data(data, addr)
+                    # print(f"Received data from {addr}: {data.hex()}")
+                except socket.timeout:
+                    pass
+                    # print('socket.timeout')
+                except Exception as e:
+                    if True:  # 仅当 is_running 为 True 时才打印错误
+                        print(f"Error receiving data: {e}")
+                        if e.args[0] == 10054:  # [WinError 10054] 远程主机强迫关闭了一个现有的连接。 端口不可达
+                            pass
+                        else:
+                            break
+            else:
+                try:
+                    data, addr = self.udp_socket.recv(65535)
+                    if not data.startswith(self.fdx_signature):
+                        print("Invalid FDX signature.")
+                    else:
+                        self.parse_fdx_data(data, addr)
+                    # print(f"Received data from {addr}: {data.hex()}")
+                except socket.timeout:
+                    pass
+                    # print('socket.timeout')
+                except Exception as e:
+                    if True:  # 仅当 is_running 为 True 时才打印错误
+                        print(f"Error receiving data: {e}")
+                        if e.args[0] == 10054:  # [WinError 10054] 远程主机强迫关闭了一个现有的连接。 端口不可达
+                            pass
+                        else:
+                            break
 
     def parse_fdx_data(self, data, addr):
         """解析 FDX 数据"""
@@ -480,15 +547,24 @@ class VectorFDX(object):
         if not self.fdx_data:
             print("No FDX data to send.")
             return
-        target_address = (self.target_ip, self.target_port)
-        try:
-            if not self.udp_socket:
-                self.create_udp_socket()
-            self.udp_socket.sendto(self.fdx_data, target_address)
-            # print(f"Sent {len(self.fdx_data)} bytes of FDX data to {target_address}")
-            self.fdx_data = b''  # 发送后清空数据
-        except Exception as e:
-            print(f"Error sending UDP data: {e}")
+        if self.UDP_Or_TCP == 'UDP':
+            target_address = (self.target_ip, self.target_port)
+            try:
+                if not self.udp_socket:
+                    self.create_udp_socket()
+                self.udp_socket.sendto(self.fdx_data, target_address)
+                # print(f"Sent {len(self.fdx_data)} bytes of FDX data to {target_address}")
+                self.fdx_data = b''  # 发送后清空数据
+            except Exception as e:
+                print(f"Error sending UDP data: {e}")
+        else:
+            try:
+                if not self.udp_socket:
+                    self.create_socket()
+                self.udp_socket.sendall(self.fdx_data)
+                self.fdx_data = b''  # 发送后清空数据
+            except Exception as e:
+                print(f"Error sending UDP data: {e}")
 
     def close_socket(self):
         """关闭 UDP 套接字"""
