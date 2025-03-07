@@ -119,6 +119,7 @@ class VectorFDX(object):
                 local_address = (self.local_ip, self.local_port)
                 service_address = (self.target_ip, self.target_port)
                 self.udp_socket.bind(local_address)
+                self.udp_socket.settimeout(1)
                 self.udp_socket.connect(service_address)
             else:
                 try:
@@ -130,7 +131,7 @@ class VectorFDX(object):
                 print(f"错误: 端口 {self.local_port} 已经被占用.")
             else:
                 print(f"error: {e}")
-                self.close_socket()
+            self.close_socket()
 
     # def create_tcp_socket(self):  # 服务端
     #     """创建 TCP服务端 套接字并绑定到本地地址"""
@@ -145,9 +146,10 @@ class VectorFDX(object):
         """启动接收线程"""
         if not self.udp_socket:
             self.create_socket()
-        self.is_running = True
-        self.receive_thread = threading.Thread(target=self._receive_data_thread, daemon=True)
-        self.receive_thread.start()
+        if self.udp_socket:
+            self.is_running = True
+            self.receive_thread = threading.Thread(target=self._receive_data_thread, daemon=True)
+            self.receive_thread.start()
 
     def stop_receiving(self):
         """停止接收线程"""
