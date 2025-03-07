@@ -90,6 +90,8 @@ class MainWindows(QMainWindow, Ui_MainWindow):
             self.port = self.ports_list[0]
         except:
             pass
+        self.comboBox_TCPORUDP.addItem('UDP')
+        self.comboBox_TCPORUDP.addItem('TCP')
         self.modbus_client = QSerialModbusRTUClient(port=self.port,
                                                     serial_baud_rate=self.serial_baud_rate,
                                                     serial_bytesize=self.serial_bytesize,
@@ -152,8 +154,14 @@ class MainWindows(QMainWindow, Ui_MainWindow):
             self.pushButton_UpdatePorts.setDisabled(True)
 
 
-    def on_port_selected(self,index):
-        self.modbus_client.port=self.ports_list[index]
+    def on_port_selected(self, index):
+        self.modbus_client.port = self.ports_list[index]
+
+    def on_TCPORUDP_selected(self, index):
+        if index == 0:
+            self.fdx.UDP_Or_TCP = "UDP"
+        else:
+            self.fdx.UDP_Or_TCP = "TCP"
 
     def connect_ui_signals(self):
         self.pushButton_StartCANoe.clicked.connect(self.start_canoe_command)
@@ -165,6 +173,8 @@ class MainWindows(QMainWindow, Ui_MainWindow):
         self.pushButton_WriteRegister.clicked.connect(self.write_modbus_register_by_ui)
         self.pushButton_UpdatePorts.clicked.connect(self.get_available_ports)
         self.comboBox_serialPorts.currentIndexChanged.connect(self.on_port_selected)
+        self.comboBox_TCPORUDP.currentIndexChanged.connect(self.on_TCPORUDP_selected)
+
 
     def write_modbus_register_by_ui(self):
         slave=int(self.lineEdit_WriteSlave.text())

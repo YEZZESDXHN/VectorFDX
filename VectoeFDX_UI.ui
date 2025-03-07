@@ -40,7 +40,7 @@
      <property name="geometry">
       <rect>
        <x>480</x>
-       <y>20</y>
+       <y>60</y>
        <width>75</width>
        <height>23</height>
       </rect>
@@ -192,6 +192,16 @@
       <string>StopCANoe</string>
      </property>
     </widget>
+    <widget class="QComboBox" name="comboBox_TCPORUDP">
+     <property name="geometry">
+      <rect>
+       <x>480</x>
+       <y>20</y>
+       <width>71</width>
+       <height>22</height>
+      </rect>
+     </property>
+    </widget>
    </widget>
    <widget class="QGroupBox" name="groupBox_2">
     <property name="geometry">
@@ -305,7 +315,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>26</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>

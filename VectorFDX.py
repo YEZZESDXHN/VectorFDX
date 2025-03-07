@@ -39,7 +39,7 @@ class VectorFDX(object):
     FreeRunningFlag_TransmitAtTrigger = 8
 
 
-    def __init__(self, UDP_Or_TCP: Literal["UDP", "TCP"] = 'TCP',
+    def __init__(self, UDP_Or_TCP: Literal["UDP", "TCP"] = 'UDP',
                  fdx_major_version: int = 2, fdx_minor_version: int = 1,
                  fdx_byte_order: Literal["little", "big"] = 'big',
                  local_ip='127.0.0.1', local_port: int = 2000,
@@ -52,6 +52,7 @@ class VectorFDX(object):
         self.fdx_minor_version = fdx_minor_version.to_bytes(1, fdx_byte_order)
         self.number_of_commands = 0  # 初始化为0，在添加命令时累加
         self.sequence_number = 1
+        self.dgramLen = 0
         self.fdx_byte_order = fdx_byte_order
         if self.fdx_byte_order == 'big':
             self.fdx_protocol_flags = 1
@@ -60,7 +61,7 @@ class VectorFDX(object):
 
         self.reserved = 0
 
-        self.udp_socket = None
+        self.socket = None
         self.local_ip = local_ip
         self.local_port = local_port
 
@@ -98,29 +99,31 @@ class VectorFDX(object):
     def create_udp_socket(self):
         """创建 UDP 套接字并绑定到本地地址"""
         try:
-            if self.udp_socket is None:
-                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if self.socket is None:
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 local_address = (self.local_ip, self.local_port)
-                self.udp_socket.bind(local_address)
-                self.udp_socket.settimeout(1)
+                # self.socket.bind(local_address)
+                self.socket.settimeout(1)
             else:
                 try:
                     self.close_socket()
                 except Exception as e:
                     print(e)
         except:
-            self.udp_socket = None
+            self.socket = None
 
     def create_tcp_socket(self):  # 客户端
         """创建 TCP客户端 套接字并绑定到本地地址"""
         try:
-            if self.udp_socket is None:
-                self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if self.socket is None:
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                # self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+                # self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 local_address = (self.local_ip, self.local_port)
                 service_address = (self.target_ip, self.target_port)
-                self.udp_socket.bind(local_address)
-                self.udp_socket.settimeout(1)
-                self.udp_socket.connect(service_address)
+                # self.socket.bind(local_address)
+                self.socket.settimeout(1)
+                self.socket.connect(service_address)
             else:
                 try:
                     self.close_socket()
@@ -135,18 +138,18 @@ class VectorFDX(object):
 
     # def create_tcp_socket(self):  # 服务端
     #     """创建 TCP服务端 套接字并绑定到本地地址"""
-    #     self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     #     local_address = (self.local_ip, self.local_port)
-    #     self.udp_socket.bind(local_address)
-    #     self.udp_socket.listen(1)  # 最大连接数
-    #     conn, addr = self.udp_socket.accept()
+    #     self.socket.bind(local_address)
+    #     self.socket.listen(1)  # 最大连接数
+    #     conn, addr = self.socket.accept()
     #     print(f"客户端 {addr} 已连接")
 
     def start_receiving(self):
         """启动接收线程"""
-        if not self.udp_socket:
+        if not self.socket:
             self.create_socket()
-        if self.udp_socket:
+        if self.socket:
             self.is_running = True
             self.receive_thread = threading.Thread(target=self._receive_data_thread, daemon=True)
             self.receive_thread.start()
@@ -162,7 +165,7 @@ class VectorFDX(object):
         while self.is_running:
             if self.UDP_Or_TCP == "UDP":
                 try:
-                    data, addr = self.udp_socket.recvfrom(65535)
+                    data, addr = self.socket.recvfrom(65535)
                     if not data.startswith(self.fdx_signature):
                         print("Invalid FDX signature.")
                     else:
@@ -180,11 +183,11 @@ class VectorFDX(object):
                             break
             else:
                 try:
-                    data, addr = self.udp_socket.recv(65535)
+                    data = self.socket.recv(65535)
                     if not data.startswith(self.fdx_signature):
                         print("Invalid FDX signature.")
                     else:
-                        self.parse_fdx_data(data, addr)
+                        self.parse_fdx_data(data)
                     # print(f"Received data from {addr}: {data.hex()}")
                 except socket.timeout:
                     pass
@@ -192,12 +195,9 @@ class VectorFDX(object):
                 except Exception as e:
                     if True:  # 仅当 is_running 为 True 时才打印错误
                         print(f"Error receiving data: {e}")
-                        if e.args[0] == 10054:  # [WinError 10054] 远程主机强迫关闭了一个现有的连接。 端口不可达
-                            pass
-                        else:
-                            break
+                        break
 
-    def parse_fdx_data(self, data, addr):
+    def parse_fdx_data(self, data, addr=None):
         """解析 FDX 数据"""
         # print(f"rec :{data.hex(' ')}")
         try:
@@ -383,22 +383,35 @@ class VectorFDX(object):
     def build_fdx_header(self):
         """构建 FDX 头部"""
         self.number_of_commands = 1
-        # if self.fdx_protocol_flags == 1:
-        #     self.fdx_byte_order = 'big'
-        # else:
-        #     self.fdx_byte_order = 'little'
-        header = (
-                self.fdx_signature +
-                self.fdx_major_version +
-                self.fdx_minor_version +
-                self.number_of_commands.to_bytes(2, self.fdx_byte_order) +
-                self.sequence_number.to_bytes(2, self.fdx_byte_order) +
-                self.fdx_protocol_flags.to_bytes(1, self.fdx_byte_order) +
-                self.reserved.to_bytes(1, self.fdx_byte_order)
-        )
-        self.sequence_number += 1
-        if self.sequence_number == 0x7FFF:
-            self.sequence_number = 1
+        if self.UDP_Or_TCP == 'UDP':
+        # if True:
+            # if self.fdx_protocol_flags == 1:
+            #     self.fdx_byte_order = 'big'
+            # else:
+            #     self.fdx_byte_order = 'little'
+            header = (
+                    self.fdx_signature +
+                    self.fdx_major_version +
+                    self.fdx_minor_version +
+                    self.number_of_commands.to_bytes(2, self.fdx_byte_order) +
+                    self.sequence_number.to_bytes(2, self.fdx_byte_order) +
+                    self.fdx_protocol_flags.to_bytes(1, self.fdx_byte_order) +
+                    self.reserved.to_bytes(1, self.fdx_byte_order)
+            )
+            self.sequence_number += 1
+            if self.sequence_number == 0x7FFF:
+                self.sequence_number = 1
+        else:
+            header = (
+                    self.fdx_signature +
+                    self.fdx_major_version +
+                    self.fdx_minor_version +
+                    self.number_of_commands.to_bytes(2, self.fdx_byte_order) +
+                    self.dgramLen.to_bytes(2, self.fdx_byte_order) +
+                    self.fdx_protocol_flags.to_bytes(1, self.fdx_byte_order) +
+                    self.reserved.to_bytes(1, self.fdx_byte_order)
+            )
+
         # print(header.hex(' '))
         return header
 
@@ -413,6 +426,11 @@ class VectorFDX(object):
         self.number_of_commands += 1
         # 更新命令数量到header
         self.fdx_data = bytearray(self.fdx_data)
+        if self.UDP_Or_TCP == 'TCP':
+            dataLen = len(self.fdx_data) + len(command_bytes)
+            dataLen = dataLen.to_bytes(2, self.fdx_byte_order)
+            self.fdx_data[12] = dataLen[0]
+            self.fdx_data[13] = dataLen[1]
         number_of_commands_bytes = self.number_of_commands.to_bytes(2, self.fdx_byte_order)
         self.fdx_data[10] = number_of_commands_bytes[0]
         self.fdx_data[11] = number_of_commands_bytes[1]
@@ -431,6 +449,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"start_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -440,6 +460,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"stop_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -452,6 +474,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"key_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -464,6 +488,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"datarequest_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -484,6 +510,8 @@ class VectorFDX(object):
                 raise ValueError("must build fdx header before add command")
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"data_exchange_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -506,6 +534,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"free_running_request_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -520,6 +550,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"free_running_cancel_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -529,6 +561,8 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"stop_command: {self.fdx_data.hex(' ').upper()}")
 
@@ -538,12 +572,14 @@ class VectorFDX(object):
         if is_add_command:
             self._add_command(command)
         else:
+            if self.UDP_Or_TCP == 'TCP':
+                self.dgramLen = 16 + len(command)
             self.fdx_data = self.build_fdx_header() + command
         # print(f"stop_command: {self.fdx_data.hex(' ').upper()}")
 
     def send_fdx_data(self):
         """发送 FDX 数据"""
-        if self.udp_socket is None:
+        if self.socket is None:
             return
         # print(f"send:{self.fdx_data.hex(' ')}")
         if not self.fdx_data:
@@ -552,18 +588,18 @@ class VectorFDX(object):
         if self.UDP_Or_TCP == 'UDP':
             target_address = (self.target_ip, self.target_port)
             try:
-                if not self.udp_socket:
+                if not self.socket:
                     self.create_udp_socket()
-                self.udp_socket.sendto(self.fdx_data, target_address)
+                self.socket.sendto(self.fdx_data, target_address)
                 # print(f"Sent {len(self.fdx_data)} bytes of FDX data to {target_address}")
                 self.fdx_data = b''  # 发送后清空数据
             except Exception as e:
                 print(f"Error sending UDP data: {e}")
         else:
             try:
-                if not self.udp_socket:
+                if not self.socket:
                     self.create_socket()
-                self.udp_socket.sendall(self.fdx_data)
+                self.socket.sendall(self.fdx_data)
                 self.fdx_data = b''  # 发送后清空数据
             except Exception as e:
                 print(f"Error sending UDP data: {e}")
@@ -572,9 +608,14 @@ class VectorFDX(object):
         """关闭 UDP 套接字"""
         if self.is_running:
             self.stop_receiving()
-        if self.udp_socket:
-            self.udp_socket.close()
-            self.udp_socket = None
+        if self.socket:
+            if self.UDP_Or_TCP == 'TCP':
+                try:
+                    self.socket.shutdown(socket.SHUT_RDWR)  # 先尝试优雅地关闭连接
+                except OSError:
+                    pass  # 如果连接已经关闭，忽略错误
+            self.socket.close()
+            self.socket = None
             print("UDP socket closed.")
 
 
