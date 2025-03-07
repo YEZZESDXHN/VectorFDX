@@ -377,7 +377,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("WindowsVista")
     w = MainWindows()
-    current_version = "v0.0.9"
+    current_version = "v0.0.10"
     w.setWindowTitle("CANoe tool " + current_version)
 
     w.show()
