@@ -427,7 +427,7 @@ class VectorFDX(object):
         # 更新命令数量到header
         self.fdx_data = bytearray(self.fdx_data)
         if self.UDP_Or_TCP == 'TCP':
-            dataLen = len(self.fdx_data) + len(command_bytes)
+            dataLen = len(self.fdx_data)
             dataLen = dataLen.to_bytes(2, self.fdx_byte_order)
             self.fdx_data[12] = dataLen[0]
             self.fdx_data[13] = dataLen[1]
